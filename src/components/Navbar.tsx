@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, ShoppingBag, Printer, Sparkles, X } from 'lucide-react';
+import { Search, ShoppingBag, Sparkles, X, Lock } from 'lucide-react';
 
 interface NavbarProps {
   searchQuery: string;
@@ -51,7 +51,7 @@ export default function Navbar({
     setTapCount(nextCount);
     resetTimerRef.current = setTimeout(() => {
       setTapCount(0);
-    }, 1000); // Si pasa más de 1 segundo entre toques, se reinicia el contador
+    }, 1000);
   };
 
   return (
@@ -108,20 +108,19 @@ export default function Navbar({
           </div>
         </div>
 
-        {/* Acciones Derecha: Estación Cocina/Barra + Carrito */}
+        {/* Botones de Acción: Central de Comandas (con PIN) + Carrito */}
         <div className="order-2 flex items-center gap-2.5 sm:gap-3 md:order-3">
           <Link
             href="/cocina-barra"
-            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-gray-700 shadow-sm transition-all hover:border-amber-400 hover:bg-amber-50"
-            title="Ver panel de impresión separada Cocina y Barra"
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-2xs transition-all hover:border-amber-400 hover:bg-amber-50 hover:text-gray-900"
           >
-            <Printer className="h-4 w-4 text-amber-600" />
-            <span className="hidden sm:inline">Cocina / Barra</span>
+            <Lock className="h-3.5 w-3.5 text-amber-600" />
+            <span>Cocina / Barra</span>
           </Link>
 
           <button
             onClick={onOpenCart}
-            className="relative inline-flex items-center gap-2.5 rounded-full bg-[#FACC15] px-4 py-2.5 text-sm font-extrabold text-gray-900 shadow-md shadow-amber-400/25 transition-all hover:bg-amber-400 active:scale-95"
+            className="relative inline-flex items-center gap-2.5 rounded-full bg-[#FACC15] px-5 py-2.5 text-sm font-extrabold text-gray-900 shadow-md shadow-amber-400/25 transition-all hover:bg-amber-400 active:scale-95"
           >
             <ShoppingBag className="h-4 w-4 stroke-[2.5]" />
             <span>{cartCount > 0 ? formatPrice(cartTotal) : 'Tu Pedido'}</span>

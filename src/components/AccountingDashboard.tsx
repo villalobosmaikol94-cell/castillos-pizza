@@ -28,10 +28,11 @@ export default function AccountingDashboard() {
   const loadFinancialData = async () => {
     setIsLoading(true);
     try {
-      if (supabase) {
+            if (supabase) {
         const { data, error } = await supabase
           .from('orders')
           .select('*')
+          .eq('is_cancelled', false)
           .order('created_at', { ascending: false });
 
         if (!error && data) {

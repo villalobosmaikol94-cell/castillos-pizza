@@ -51,3 +51,33 @@ export interface Order {
   createdAt: string;
   status: 'PENDIENTE' | 'PREPARANDO' | 'LISTO';
 }
+export interface Order {
+  id: string;
+  customerName: string;
+  orderType: 'MESA' | 'DOMICILIO';
+  tableOrAddress: string;
+  items: CartItem[];
+  total: number;
+  createdAt: string;
+  status: 'PENDIENTE' | 'PREPARANDO' | 'LISTO';
+  waiterName?: string;
+  waiterCode?: string;
+  kitchenStatus?: 'EN_COLA' | 'PREPARANDO' | 'DESPACHADO';
+  isCancelled?: boolean;
+  cancelReason?: string;
+  invoiceType?: 'POS_LOCAL' | 'DIAN_ELECTRONICA';
+}
+
+export interface RestaurantSpot {
+  id: string;
+  spot_type: 'MESA' | 'BARRA';
+  spot_number: number;
+  status: 'DISPONIBLE' | 'OCUPADA' | 'RESERVADA';
+}
+
+export interface WaiterProfile {
+  id: number;
+  code: string;
+  name: string;
+  active: boolean;
+}

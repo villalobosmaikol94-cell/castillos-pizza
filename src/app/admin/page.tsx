@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MENU_CATEGORIES } from '@/data/menuData';
+import { MENU_CATEGORIES, MENU_PRODUCTS } from '@/data/menuData';
 import { MenuCategory, Product } from '@/types/restaurant';
 import { supabase } from '@/lib/supabase';
 import AccountingDashboard from '@/components/AccountingDashboard';
@@ -48,7 +48,7 @@ export default function AdminSecretPage() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<AdminTab>('CARTA');
 
-  const [items, setItems] = useState<Product[]>([]);
+  const [items, setItems] = useState<Product[]>(MENU_PRODUCTS);
   const [searchMenu, setSearchMenu] = useState('');
   const [selectedCat, setSelectedCat] = useState<string>('Todas');
 
@@ -113,7 +113,7 @@ export default function AdminSecretPage() {
     loadMenu();
   }, [unlocked]);
   const syncMenuChanges = async (updatedList: Product[]) => {
-    setItems(updatedList);
+   setItems(MENU_PRODUCTS);
     localStorage.setItem('castillos_custom_menu', JSON.stringify(updatedList));
   };
 

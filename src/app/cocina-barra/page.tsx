@@ -112,7 +112,7 @@ export default function CocinaBarraPage() {
     }
 
     setAuthError(
-      'Código inválido. Usa la clave de Cajera (2016) o código de Mesero (101-118).'
+      'Código inválido. Usa la clave de Cajera (2026) o código de Mesero (101-118).'
     );
   };
   useEffect(() => {
@@ -125,8 +125,9 @@ export default function CocinaBarraPage() {
           .from('orders')
           .select('*')
           .eq('is_cancelled', false)
+          .neq('status', 'LISTO')
           .order('created_at', { ascending: false })
-          .limit(40);
+          .limit(60);
 
         if (!error && data) {
           const mapped: Order[] = data.map((row) => ({
@@ -209,6 +210,16 @@ export default function CocinaBarraPage() {
     };
   }, [role]);
 
+  const handleCloseTableAccount = async (orderIds: string[]) => {
+    setOrders((prev) => prev.filter((o) => !orderIds.includes(o.id)));
+    if (supabase) {
+      await supabase
+        .from('orders')
+        .update({ status: 'LISTO' })
+        .in('id', orderIds);
+    }
+  };
+
   const handleClearScreen = () => {
     localStorage.removeItem('castillos_orders');
     setOrders([]);
@@ -220,6 +231,7 @@ export default function CocinaBarraPage() {
       currency: 'COP',
       maximumFractionDigits: 0,
     }).format(amount);
+
   const handlePrintStationTicket = (
     order: Order,
     station: 'COCINA' | 'BARRA',
@@ -274,7 +286,7 @@ export default function CocinaBarraPage() {
             <div style="font-size: 16px; margin-top: 4px; font-weight: bold;">
               ${order.orderType}: ${order.tableOrAddress}
             </div>
-            <div style="font-size: 13px;">Atendido por: <strong>${order.waiterName || 'Autoservicio QR'}</strong></div>
+            <div style="font-size: 13px;">Atiende: <strong>${order.waiterName || 'Autoservicio QR'}</strong></div>
             <div style="font-size: 13px;">Cliente: ${order.customerName}</div>
           </div>
           <div>${itemsHtml}</div>
@@ -292,18 +304,22 @@ export default function CocinaBarraPage() {
     `);
     printWindow.document.close();
   };
-
-  const handlePrintUnifiedInvoice = (
-    order: Order,
+  const handlePrintUnifiedAccount = (
+    accountTitle: string,
+    customerName: string,
+    waiterName: string,
+    allItems: CartItem[],
+    grandTotal: number,
+    orderIds: string[],
     type: 'POS_LOCAL' | 'DIAN_ELECTRONICA'
   ) => {
-    const printWindow = window.open('', '_blank', 'width=420,height=750');
+    const printWindow = window.open('', '_blank', 'width=420,height=780');
     if (!printWindow) return;
 
     const docTitle =
       type === 'DIAN_ELECTRONICA'
         ? 'FACTURA ELECTRÓNICA DE VENTA (DIAN)'
-        : 'COMPROBANTE DE VENTA POS LOCAL';
+        : 'FACTURA DE VENTA POS LOCAL';
 
     const buildReceiptCopy = (copyLabel: string) => `
       <div style="page-break-after: always; padding-bottom: 18px; border-bottom: 3px double #000; margin-bottom: 18px;">
@@ -313,28 +329,28 @@ export default function CocinaBarraPage() {
           <div style="font-size: 13px; font-weight: bold; border: 2px solid #000; padding: 4px; margin: 6px 0;">
             ${docTitle}
           </div>
-          <div style="font-size: 12px; font-weight: bold; background: #000; color: #fff; padding: 2px;">
+          <div style="font-size: 12px; font-weight: bold; background: #000; color: #fff; padding: 3px;">
             *** ${copyLabel} ***
           </div>
         </div>
 
         <div style="font-size: 13px; line-height: 1.5; margin-bottom: 10px;">
-          <div><strong>Factura / Orden:</strong> #${order.id}</div>
-          <div><strong>Fecha y Hora:</strong> ${new Date().toLocaleDateString('es-CO')} ${order.createdAt}</div>
-          <div><strong>Destino:</strong> ${order.orderType} - ${order.tableOrAddress}</div>
-          <div><strong>Cliente:</strong> ${order.customerName}</div>
-          <div><strong>Mesero:</strong> ${order.waiterName || 'Autoservicio QR'}</div>
+          <div><strong>Cuenta Unificada:</strong> ${accountTitle}</div>
+          <div><strong>Comandas Incluidas:</strong> ${orderIds.map((id) => `#${id}`).join(', ')}</div>
+          <div><strong>Fecha y Hora:</strong> ${new Date().toLocaleString('es-CO')}</div>
+          <div><strong>Cliente:</strong> ${customerName}</div>
+          <div><strong>Mesero:</strong> ${waiterName}</div>
         </div>
 
         <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 10px;">
           <thead>
             <tr style="border-top: 2px solid #000; border-bottom: 2px solid #000;">
               <th style="text-align: left; padding: 4px 0;">Cant / Descripción</th>
-              <th style="text-align: right; padding: 4px 0;">Total</th>
+              <th style="text-align: right; padding: 4px 0;">Subtotal</th>
             </tr>
           </thead>
           <tbody>
-            ${order.items
+            ${allItems
               .map(
                 (item) => `
               <tr style="border-bottom: 1px dashed #999;">
@@ -352,8 +368,8 @@ export default function CocinaBarraPage() {
           </tbody>
         </table>
 
-        <div style="border-top: 2px solid #000; padding-top: 8px; text-align: right; font-size: 18px; font-weight: bold;">
-          TOTAL A PAGAR: ${formatPrice(order.total)}
+        <div style="border-top: 2px solid #000; padding-top: 8px; text-align: right; font-size: 19px; font-weight: bold;">
+          TOTAL CONSUMIDO: ${formatPrice(grandTotal)}
         </div>
 
         <div style="text-align: center; margin-top: 12px; font-size: 12px;">
@@ -366,7 +382,7 @@ export default function CocinaBarraPage() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Factura Unificada #${order.id}</title>
+          <title>Factura Total ${accountTitle}</title>
           <style>
             body {
               font-family: 'Courier New', monospace;
@@ -378,7 +394,7 @@ export default function CocinaBarraPage() {
           </style>
         </head>
         <body>
-          ${buildReceiptCopy('COPIA 1: ARCHIVO LOCAL / CAJA')}
+          ${buildReceiptCopy('COPIA 1: ARCHIVO LOCAL / RESTAURANTE')}
           ${buildReceiptCopy('COPIA 2: CLIENTE')}
           <script>
             window.onload = function() {
@@ -401,7 +417,15 @@ export default function CocinaBarraPage() {
       .on('broadcast', { event: 'PRINT_ORDER' }, (payload) => {
         const incomingOrder = payload.payload?.order as Order | undefined;
         if (incomingOrder) {
-          handlePrintUnifiedInvoice(incomingOrder, invoiceMode);
+          handlePrintUnifiedAccount(
+            `${incomingOrder.orderType}: ${incomingOrder.tableOrAddress}`,
+            incomingOrder.customerName,
+            incomingOrder.waiterName || 'Mesero',
+            incomingOrder.items,
+            incomingOrder.total,
+            [incomingOrder.id],
+            invoiceMode
+          );
         }
       })
       .subscribe();
@@ -410,6 +434,7 @@ export default function CocinaBarraPage() {
       client.removeChannel(printChannel);
     };
   }, [role, invoiceMode]);
+
   if (!role) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAFAFA] px-4">
@@ -460,6 +485,50 @@ export default function CocinaBarraPage() {
       </div>
     );
   }
+  const groupedAccounts = Object.values(
+    orders.reduce(
+      (acc, order) => {
+        const key = `${order.orderType}:${order.tableOrAddress.trim().toUpperCase()}`;
+        if (!acc[key]) {
+          acc[key] = {
+            key,
+            orderType: order.orderType,
+            tableOrAddress: order.tableOrAddress,
+            customerName: order.customerName,
+            waiterName: order.waiterName || 'Autoservicio QR',
+            orders: [],
+            allItems: [],
+            grandTotal: 0,
+            lastTime: order.createdAt,
+          };
+        }
+        acc[key].orders.push(order);
+        acc[key].allItems.push(...order.items);
+        acc[key].grandTotal += order.total;
+        if (order.waiterName && order.waiterName !== 'Autoservicio QR') {
+          acc[key].waiterName = order.waiterName;
+        }
+        if (order.customerName && order.customerName !== 'Cliente en Local') {
+          acc[key].customerName = order.customerName;
+        }
+        return acc;
+      },
+      {} as Record<
+        string,
+        {
+          key: string;
+          orderType: 'MESA' | 'DOMICILIO';
+          tableOrAddress: string;
+          customerName: string;
+          waiterName: string;
+          orders: Order[];
+          allItems: CartItem[];
+          grandTotal: number;
+          lastTime: string;
+        }
+      >
+    )
+  );
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-gray-900">
@@ -526,7 +595,7 @@ export default function CocinaBarraPage() {
                 }`}
               >
                 <FileText className="h-3.5 w-3.5" />
-                <span>Comandas y Facturación</span>
+                <span>Cuentas y Comandas ({groupedAccounts.length})</span>
               </button>
 
               <button
@@ -567,15 +636,15 @@ export default function CocinaBarraPage() {
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {activeTab === 'MESAS' ? (
           <SpotsMap />
-        ) : orders.length === 0 ? (
+        ) : groupedAccounts.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-gray-300 bg-white py-20 text-center">
             <CheckCircle2 className="mb-3 h-12 w-12 text-emerald-400" />
             <h2 className="text-lg font-extrabold text-gray-800">
-              No hay comandas pendientes en este momento
+              No hay cuentas abiertas en este momento
             </h2>
             <p className="mt-1 max-w-md text-sm text-gray-500">
-              Cuando un cliente o mesero confirme un pedido, aparecerá aquí con
-              tickets separados y factura unificada.
+              Cada pedido que llegue se agrupará automáticamente por mesa para
+              emitir una sola factura total en 2 copias.
             </p>
             <Link
               href="/"
@@ -586,58 +655,83 @@ export default function CocinaBarraPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {orders.map((order) => {
-              const foodItems = order.items.filter(
+            {groupedAccounts.map((account) => {
+              const allFoodItems = account.allItems.filter(
                 (i) => i.station === 'COCINA'
               );
-              const drinkItems = order.items.filter(
+              const allDrinkItems = account.allItems.filter(
                 (i) => i.station === 'BARRA'
               );
+              const orderIds = account.orders.map((o) => o.id);
+              const latestOrder = account.orders[0];
 
               return (
                 <section
-                  key={order.id}
+                  key={account.key}
                   className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/80 px-6 py-4">
+                  {/* Encabezado Unificado de la Mesa / Cliente */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/90 px-6 py-4">
                     <div className="flex flex-wrap items-center gap-2.5">
-                      <span className="rounded-xl bg-[#FACC15] px-3 py-1 text-sm font-extrabold text-gray-900">
-                        Orden #{order.id}
+                      <span className="rounded-xl bg-[#FACC15] px-3.5 py-1.5 text-sm font-extrabold text-gray-900">
+                        {account.orderType}: {account.tableOrAddress}
                       </span>
-                      <span className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs font-extrabold text-gray-800">
-                        {order.orderType}: {order.tableOrAddress}
+                      <span className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-700">
+                        {account.orders.length} comanda(s):{' '}
+                        {orderIds.map((id) => `#${id}`).join(', ')}
                       </span>
-                      <span className="rounded-lg bg-amber-100/70 px-2.5 py-1 text-xs font-bold text-amber-900">
-                        Atiende: {order.waiterName || 'Autoservicio QR'}
+                      <span className="rounded-lg bg-amber-100/80 px-2.5 py-1 text-xs font-extrabold text-amber-900">
+                        Atiende: {account.waiterName}
                       </span>
                       <span className="text-xs font-medium text-gray-500">
-                        Cliente: <strong>{order.customerName}</strong>
+                        Cliente: <strong>{account.customerName}</strong>
                       </span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      {/* Botón Único de Factura Total (2 Copias: Restaurante + Cliente) */}
                       <button
                         onClick={() =>
-                          handlePrintUnifiedInvoice(order, invoiceMode)
+                          handlePrintUnifiedAccount(
+                            `${account.orderType}: ${account.tableOrAddress}`,
+                            account.customerName,
+                            account.waiterName,
+                            account.allItems,
+                            account.grandTotal,
+                            orderIds,
+                            invoiceMode
+                          )
                         }
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3.5 py-2 text-xs font-extrabold text-white shadow-xs transition-all hover:bg-gray-800 active:scale-98"
-                        title="Imprime el total completo en 2 copias: Local y Cliente"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-extrabold text-white shadow-xs transition-all hover:bg-gray-800 active:scale-98"
                       >
-                        <Receipt className="h-3.5 w-3.5 text-[#FACC15]" />
+                        <Receipt className="h-4 w-4 text-[#FACC15]" />
                         <span>
-                          Factura Total ({formatPrice(order.total)}) • 2 Copias
+                          Factura Total ({formatPrice(account.grandTotal)}) • 2
+                          Copias
                         </span>
                       </button>
 
+                      {role === 'ADMIN' && (
+                        <button
+                          onClick={() => handleCloseTableAccount(orderIds)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-700 hover:bg-emerald-600 hover:text-white"
+                          title="Marcar cuenta como cobrada y cerrar mesa"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>Cerrar Cuenta</span>
+                        </button>
+                      )}
+
                       <div className="flex items-center gap-1 text-xs font-semibold text-gray-500">
                         <Clock className="h-3.5 w-3.5 text-amber-600" />
-                        <span>{order.createdAt}</span>
+                        <span>{account.lastTime}</span>
                       </div>
                     </div>
                   </div>
 
+                  {/* Separación Automática de Comandas: COCINA vs BARRA */}
                   <div className="grid grid-cols-1 divide-y divide-gray-100 md:grid-cols-2 md:divide-x md:divide-y-0">
-                    {/* COLUMNA 1: ESTACIÓN COCINA */}
+                    {/* COMANDA COCINA */}
                     <div className="flex flex-col justify-between p-6">
                       <div>
                         <div className="mb-4 flex items-center gap-2">
@@ -649,48 +743,53 @@ export default function CocinaBarraPage() {
                               Comanda Cocina (Comida)
                             </h3>
                             <p className="text-xs text-gray-500">
-                              {foodItems.length} ítem(s) para preparar
+                              {allFoodItems.length} ítem(s) acumulados en cocina
                             </p>
                           </div>
                         </div>
 
-                        {foodItems.length === 0 ? (
+                        {allFoodItems.length === 0 ? (
                           <p className="rounded-xl bg-gray-50 p-4 text-center text-xs font-medium text-gray-400">
-                            Este pedido no incluye comida.
+                            Sin consumo de comida en esta cuenta.
                           </p>
                         ) : (
                           <ul className="space-y-2.5">
-                            {foodItems.map((item, idx) => (
+                            {allFoodItems.map((item, idx) => (
                               <li
                                 key={idx}
-                                className="rounded-xl border border-amber-100 bg-amber-50/40 p-3"
+                                className="flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50/40 p-3"
                               >
-                                <div className="text-sm font-extrabold text-gray-900">
-                                  {item.quantity}x {item.name}
+                                <div>
+                                  <div className="text-sm font-extrabold text-gray-900">
+                                    {item.quantity}x {item.name}
+                                  </div>
+                                  {item.selectedOption && (
+                                    <div className="mt-0.5 text-xs font-bold text-amber-700">
+                                      • {item.selectedOption}
+                                    </div>
+                                  )}
+                                  {item.notes && (
+                                    <div className="mt-1 rounded-md border border-red-100 bg-white px-2 py-1 text-xs font-semibold text-red-600">
+                                      Nota: {item.notes}
+                                    </div>
+                                  )}
                                 </div>
-                                {item.selectedOption && (
-                                  <div className="mt-0.5 text-xs font-bold text-amber-700">
-                                    • {item.selectedOption}
-                                  </div>
-                                )}
-                                {item.notes && (
-                                  <div className="mt-1 rounded-md border border-red-100 bg-white px-2 py-1 text-xs font-semibold text-red-600">
-                                    Nota: {item.notes}
-                                  </div>
-                                )}
+                                <span className="text-xs font-extrabold text-gray-700">
+                                  {formatPrice(item.finalPrice * item.quantity)}
+                                </span>
                               </li>
                             ))}
                           </ul>
                         )}
                       </div>
 
-                      {foodItems.length > 0 && (
+                      {allFoodItems.length > 0 && (
                         <button
                           onClick={() =>
                             handlePrintStationTicket(
-                              order,
+                              latestOrder,
                               'COCINA',
-                              foodItems
+                              allFoodItems
                             )
                           }
                           className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#FACC15] py-3 text-xs font-extrabold uppercase tracking-wider text-gray-900 shadow-xs transition-all hover:bg-amber-400 active:scale-98"
@@ -700,62 +799,66 @@ export default function CocinaBarraPage() {
                         </button>
                       )}
                     </div>
-                    {/* COLUMNA 2: ESTACIÓN BARRA / BEBIDAS */}
+                    {/* COMANDA BARRA / BEBIDAS */}
                     <div className="flex flex-col justify-between bg-sky-50/20 p-6">
                       <div>
-                        <div className="mb-4 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="rounded-xl bg-sky-100 p-2 text-sky-700">
-                              <Wine className="h-5 w-5" />
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-extrabold uppercase tracking-wide text-gray-900">
-                                Comanda Barra (Bebidas)
-                              </h3>
-                              <p className="text-xs text-gray-500">
-                                {drinkItems.length} bebida(s) separadas
-                              </p>
-                            </div>
+                        <div className="mb-4 flex items-center gap-2">
+                          <div className="rounded-xl bg-sky-100 p-2 text-sky-700">
+                            <Wine className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-extrabold uppercase tracking-wide text-gray-900">
+                              Comanda Barra (Bebidas)
+                            </h3>
+                            <p className="text-xs text-gray-500">
+                              {allDrinkItems.length} bebida(s) acumuladas en
+                              barra
+                            </p>
                           </div>
                         </div>
 
-                        {drinkItems.length === 0 ? (
+                        {allDrinkItems.length === 0 ? (
                           <p className="rounded-xl bg-gray-50 p-4 text-center text-xs font-medium text-gray-400">
-                            Este pedido no incluye bebidas.
+                            Sin consumo de bebidas en esta cuenta.
                           </p>
                         ) : (
                           <ul className="space-y-2.5">
-                            {drinkItems.map((item, idx) => (
+                            {allDrinkItems.map((item, idx) => (
                               <li
                                 key={idx}
-                                className="rounded-xl border border-sky-100 bg-white p-3 shadow-2xs"
+                                className="flex items-center justify-between rounded-xl border border-sky-100 bg-white p-3 shadow-2xs"
                               >
-                                <div className="text-sm font-extrabold text-gray-900">
-                                  {item.quantity}x {item.name}
+                                <div>
+                                  <div className="text-sm font-extrabold text-gray-900">
+                                    {item.quantity}x {item.name}
+                                  </div>
+                                  {item.selectedOption && (
+                                    <div className="mt-0.5 text-xs font-bold text-sky-700">
+                                      • {item.selectedOption}
+                                    </div>
+                                  )}
+                                  {item.notes && (
+                                    <div className="mt-1 rounded-md bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-800">
+                                      Nota: {item.notes}
+                                    </div>
+                                  )}
                                 </div>
-                                {item.selectedOption && (
-                                  <div className="mt-0.5 text-xs font-bold text-sky-700">
-                                    • {item.selectedOption}
-                                  </div>
-                                )}
-                                {item.notes && (
-                                  <div className="mt-1 rounded-md bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-800">
-                                    Nota: {item.notes}
-                                  </div>
-                                )}
+                                <span className="text-xs font-extrabold text-gray-700">
+                                  {formatPrice(item.finalPrice * item.quantity)}
+                                </span>
                               </li>
                             ))}
                           </ul>
                         )}
                       </div>
 
-                      {drinkItems.length > 0 && (
+                      {allDrinkItems.length > 0 && (
                         <button
                           onClick={() =>
                             handlePrintStationTicket(
-                              order,
+                              latestOrder,
                               'BARRA',
-                              drinkItems
+                              allDrinkItems
                             )
                           }
                           className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 py-3 text-xs font-extrabold uppercase tracking-wider text-white shadow-xs transition-all hover:bg-sky-600 active:scale-98"

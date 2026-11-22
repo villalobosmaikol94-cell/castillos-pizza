@@ -4,7 +4,14 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, ShoppingBag, Sparkles, X, Lock } from 'lucide-react';
+import {
+  Search,
+  ShoppingBag,
+  Sparkles,
+  X,
+  Lock,
+  PartyPopper,
+} from 'lucide-react';
 
 interface NavbarProps {
   searchQuery: string;
@@ -108,8 +115,16 @@ export default function Navbar({
           </div>
         </div>
 
-        {/* Botones de Acción: Central de Comandas (con PIN) + Carrito */}
-        <div className="order-2 flex items-center gap-2.5 sm:gap-3 md:order-3">
+        {/* Botones de Acción: Eventos + Cocina/Barra + Carrito */}
+        <div className="order-2 flex items-center gap-2 sm:gap-2.5 md:order-3">
+          <Link
+            href="/eventos"
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50/80 px-3.5 py-2 text-xs font-extrabold text-amber-900 shadow-2xs transition-all hover:bg-[#FACC15] hover:text-gray-900"
+          >
+            <PartyPopper className="h-3.5 w-3.5 text-amber-600" />
+            <span>Eventos</span>
+          </Link>
+
           <Link
             href="/cocina-barra"
             className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-2xs transition-all hover:border-amber-400 hover:bg-amber-50 hover:text-gray-900"

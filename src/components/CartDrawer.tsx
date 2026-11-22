@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CartItem, Order } from '@/types/restaurant';
+import { CartItem, Order, WaiterProfile } from '@/types/restaurant';
 import { supabase } from '@/lib/supabase';
 import {
   X,
@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   MessageCircle,
   Lock,
+  UserCheck,
+  Printer,
 } from 'lucide-react';
 
 const RESTAURANT_WHATSAPP = '573045959660';
@@ -41,8 +43,15 @@ export default function CartDrawer({
   const [customerName, setCustomerName] = useState('');
   const [tableOrAddress, setTableOrAddress] = useState('');
   const [lockedTable, setLockedTable] = useState<string | null>(null);
+
+  // Estado para identificación de Mesero (101 - 118)
+  const [waiterCodeInput, setWaiterCodeInput] = useState('');
+  const [verifiedWaiter, setVerifiedWaiter] = useState<WaiterProfile | null>(null);
+  const [waiterError, setWaiterError] = useState('');
+
   const [isSending, setIsSending] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<Order | null>(null);
+  const [remotePrintSent, setRemotePrintSent] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -54,8 +63,47 @@ export default function CartDrawer({
         setTableOrAddress(formatted);
         setLockedTable(formatted);
       }
+
+      const savedWaiter = sessionStorage.getItem('castillos_active_waiter');
+      if (savedWaiter) {
+        const parsed = JSON.parse(savedWaiter) as WaiterProfile;
+        setVerifiedWaiter(parsed);
+        setWaiterCodeInput(parsed.code);
+      }
     }
   }, []);
+
+  // Valida automáticamente el código del mesero (101-118) contra Supabase
+  useEffect(() => {
+    const clean = waiterCodeInput.trim();
+    if (!clean) {
+      setVerifiedWaiter(null);
+      setWaiterError('');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('waiters')
+        .select('*')
+        .eq('code', clean)
+        .eq('active', true)
+        .single();
+
+      if (!error && data) {
+        const profile = data as WaiterProfile;
+        setVerifiedWaiter(profile);
+        setWaiterError('');
+        sessionStorage.setItem('castillos_active_waiter', JSON.stringify(profile));
+      } else {
+        setVerifiedWaiter(null);
+        setWaiterError('Código no registrado');
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [waiterCodeInput]);
 
   if (!isOpen) return null;
 
@@ -73,8 +121,6 @@ export default function CartDrawer({
     (sum, item) => sum + item.finalPrice * item.quantity,
     0
   );
-
-  // Abre WhatsApp automáticamente según dispositivo (app en celular / WhatsApp Web en PC)
   const openWhatsAppDelivery = (order: Order) => {
     const lines = order.items.map((item) => {
       const opt = item.selectedOption ? ` (${item.selectedOption})` : '';
@@ -99,21 +145,29 @@ export default function CartDrawer({
     const phoneNumber = RESTAURANT_WHATSAPP;
     const encodedMessage = encodeURIComponent(text);
 
-    // Enlaces de WhatsApp: app directa en móvil, wa.me en computador
-    const urlWeb = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+    const urlWeb = `https://wa.me{phoneNumber}?text=${encodedMessage}`;
     const urlApp = `whatsapp://send?phone=${phoneNumber}&text=${encodedMessage}`;
     const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     if (esMovil) {
-      // En celular abre la app; si no se abrió, usa wa.me como respaldo
       window.location.href = urlApp;
       setTimeout(() => {
         if (!document.hidden) window.location.href = urlWeb;
       }, 1500);
     } else {
-      // En computador abre WhatsApp Web en otra pestaña
       window.open(urlWeb, '_blank', 'noopener,noreferrer');
     }
+  };
+
+  // Envía señal en tiempo real a Caja (/cocina-barra) para imprimir comandas y factura
+  const handleRemotePrintFromPhone = async (order: Order) => {
+    if (!supabase) return;
+    await supabase.channel('castillos-remote-print').send({
+      type: 'broadcast',
+      event: 'PRINT_ORDER',
+      payload: { order },
+    });
+    setRemotePrintSent(true);
   };
 
   const handleConfirmOrder = async (e: React.FormEvent) => {
@@ -121,6 +175,17 @@ export default function CartDrawer({
     if (items.length === 0 || !tableOrAddress.trim()) return;
 
     setIsSending(true);
+    setRemotePrintSent(false);
+
+    const assignedWaiterName =
+      orderType === 'MESA' && verifiedWaiter
+        ? verifiedWaiter.name
+        : orderType === 'MESA'
+        ? 'Autoservicio QR'
+        : 'Domicilio Web';
+
+    const assignedWaiterCode =
+      orderType === 'MESA' && verifiedWaiter ? verifiedWaiter.code : undefined;
 
     const newOrder: Order = {
       id: `CP-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -129,6 +194,8 @@ export default function CartDrawer({
       tableOrAddress: tableOrAddress.trim(),
       items,
       total: totalAmount,
+      waiterName: assignedWaiterName,
+      waiterCode: assignedWaiterCode,
       createdAt: new Date().toLocaleTimeString('es-CO', {
         hour: '2-digit',
         minute: '2-digit',
@@ -147,6 +214,10 @@ export default function CartDrawer({
             items: newOrder.items,
             total: newOrder.total,
             status: newOrder.status,
+            waiter_name: newOrder.waiterName,
+            waiter_code: newOrder.waiterCode || null,
+            is_cancelled: false,
+            kitchen_status: 'EN_COLA',
           },
         ]);
         if (error) console.error('Error Supabase:', error.message);
@@ -171,7 +242,6 @@ export default function CartDrawer({
       setCustomerName('');
       setTableOrAddress(lockedTable || '');
 
-      // Si el pedido es DOMICILIO, lanza WhatsApp inmediatamente
       if (newOrder.orderType === 'DOMICILIO') {
         openWhatsAppDelivery(newOrder);
       }
@@ -211,7 +281,7 @@ export default function CartDrawer({
             <div className="my-6 flex flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6 text-center">
               <CheckCircle2 className="mb-3 h-14 w-14 text-emerald-600" />
               <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
-                Orden #{orderSuccess.id} Confirmada
+                Orden #{orderSuccess.id} • {orderSuccess.waiterName}
               </span>
               <h3 className="mt-3 text-xl font-extrabold text-gray-900">
                 ¡Pedido Enviado con Éxito!
@@ -219,10 +289,31 @@ export default function CartDrawer({
               <p className="mt-2 text-sm text-gray-600">
                 {orderSuccess.orderType === 'DOMICILIO'
                   ? 'Tu domicilio ya ingresó a cocina y se abrió WhatsApp para confirmarlo.'
-                  : 'Tus comandas ya llegaron directo a Cocina y Barra. En un momento te atendemos en tu mesa.'}
+                  : `Pedido registrado en ${orderSuccess.tableOrAddress}. Ya llegó a Cocina y Barra.`}
               </p>
 
               <div className="mt-5 flex w-full flex-col gap-2.5">
+                {/* Botón exclusivo para que el Mesero mande a imprimir desde su celular a Caja */}
+                {orderSuccess.orderType === 'MESA' && orderSuccess.waiterCode && (
+                  <button
+                    type="button"
+                    disabled={remotePrintSent}
+                    onClick={() => handleRemotePrintFromPhone(orderSuccess)}
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-extrabold shadow-sm transition-all ${
+                      remotePrintSent
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-gray-900 text-[#FACC15] hover:bg-gray-800'
+                    }`}
+                  >
+                    <Printer className="h-5 w-5" />
+                    <span>
+                      {remotePrintSent
+                        ? '✓ Orden de Impresión Enviada a Caja'
+                        : 'Mandar a Imprimir Factura en Caja'}
+                    </span>
+                  </button>
+                )}
+
                 {orderSuccess.orderType === 'DOMICILIO' && (
                   <button
                     type="button"
@@ -388,6 +479,41 @@ export default function CartDrawer({
                     <span>Domicilio</span>
                   </button>
                 </div>
+
+                {/* Código de Mesero (Solo En Mesa) */}
+                {orderType === 'MESA' && (
+                  <div className="rounded-xl border border-amber-200/80 bg-amber-50/40 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-extrabold text-gray-800">
+                        Código de Mesero (Si aplica)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={waiterCodeInput}
+                        onChange={(e) => setWaiterCodeInput(e.target.value)}
+                        placeholder="Ej: 101"
+                        className="w-24 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-center text-xs font-extrabold text-gray-900 focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {verifiedWaiter && (
+                      <div className="mt-2 flex items-center gap-1.5 text-xs font-extrabold text-emerald-700">
+                        <UserCheck className="h-4 w-4 text-emerald-600" />
+                        <span>
+                          Atiende: {verifiedWaiter.name} (#{verifiedWaiter.code})
+                        </span>
+                      </div>
+                    )}
+
+                    {waiterError && (
+                      <p className="mt-1.5 text-[11px] font-bold text-red-600">
+                        {waiterError}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className="mb-1 flex items-center justify-between text-xs font-bold text-gray-700">

@@ -115,53 +115,12 @@ export default function CocinaBarraPage() {
       'Código inválido. Usa la clave de Cajera (2026) o código de Mesero (101-118).'
     );
   };
-  useEffect(() => {
+    useEffect(() => {
     if (!role) return;
     const client = supabase;
 
-    const fetchOrders = async () => {
-      if (client) {
-        const { data, error } = await client
-          .from('orders')
-          .select('*')
-          .eq('is_cancelled', false)
-          .neq('status', 'LISTO')
-          .order('created_at', { ascending: false })
-          .limit(60);
-
-        if (!error && data) {
-          const mapped: Order[] = data.map((row) => ({
-            id: String(row.id),
-            customerName: String(row.customer_name || 'Cliente en Local'),
-            orderType: (row.order_type as 'MESA' | 'DOMICILIO') || 'MESA',
-            tableOrAddress: String(row.table_or_address || ''),
-            items: (row.items as CartItem[]) || [],
-            total: Number(row.total || 0),
-            status: (row.status as Order['status']) || 'PENDIENTE',
-            waiterName: row.waiter_name
-              ? String(row.waiter_name)
-              : 'Autoservicio QR',
-            waiterCode: row.waiter_code ? String(row.waiter_code) : undefined,
-            createdAt: new Date(String(row.created_at)).toLocaleTimeString(
-              'es-CO',
-              {
-                hour: '2-digit',
-                minute: '2-digit',
-              }
-            ),
-          }));
-          setOrders(mapped);
-          return;
-        }
-      }
-
-      const saved = JSON.parse(
-        localStorage.getItem('castillos_orders') || '[]'
-      );
-      setOrders(saved);
-    };
-
-    fetchOrders();
+    // Arranca limpia mostrando solo pedidos nuevos que entren en vivo en esta sesión
+    setOrders([]);
 
     if (!client) return;
 
@@ -209,6 +168,7 @@ export default function CocinaBarraPage() {
       client.removeChannel(channel);
     };
   }, [role]);
+
 
   const handleCloseTableAccount = async (orderIds: string[]) => {
     setOrders((prev) => prev.filter((o) => !orderIds.includes(o.id)));

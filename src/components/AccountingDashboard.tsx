@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Award,
   Wallet,
+  Trash2,
 } from 'lucide-react';
 
 interface StoredOrderRow {
@@ -149,7 +150,6 @@ export default function AccountingDashboard() {
         Number(item.finalPrice || 0) * Number(item.quantity || 1);
     });
   });
-
   const topProducts = Object.entries(productCounter)
     .map(([name, stats]) => ({ name, ...stats }))
     .sort((a, b) => b.qty - a.qty)
@@ -197,6 +197,39 @@ export default function AccountingDashboard() {
     link.click();
     document.body.removeChild(link);
   };
+
+  const handleClearAccounting = async () => {
+    const paso1 = confirm(
+      '⚠️ ATENCIÓN DUEÑO: ¿Deseas BORRAR toda la contabilidad (ventas, comandas cerradas y gastos registrados) para iniciar desde $0?'
+    );
+    if (!paso1) return;
+
+    const paso2 = prompt(
+      'Por seguridad, escribe la palabra BORRAR en mayúsculas para confirmar:'
+    );
+    if (paso2 !== 'BORRAR') {
+      alert('Operación cancelada. La contabilidad sigue intacta.');
+      return;
+    }
+
+    if (supabase) {
+      await Promise.all([
+        supabase
+          .from('orders')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000'),
+        supabase
+          .from('restaurant_expenses')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000'),
+      ]);
+    }
+
+    localStorage.removeItem('castillos_orders');
+    await loadAccountingData();
+    alert('✅ Contabilidad reiniciada a $0 correctamente.');
+  };
+
   const periodLabels: Record<PeriodFilter, string> = {
     HOY: 'Hoy',
     SEMANA: 'Últimos 7 días',
@@ -229,7 +262,7 @@ export default function AccountingDashboard() {
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={loadAccountingData}
             className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3.5 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100"
@@ -245,6 +278,15 @@ export default function AccountingDashboard() {
           >
             <Download className="h-3.5 w-3.5" />
             <span>Exportar Excel</span>
+          </button>
+
+          <button
+            onClick={handleClearAccounting}
+            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-extrabold text-red-700 transition-colors hover:bg-red-600 hover:text-white"
+            title="Borrar contabilidad y reiniciar desde $0"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Borrar Contabilidad</span>
           </button>
         </div>
       </div>
@@ -299,7 +341,6 @@ export default function AccountingDashboard() {
             Ingresos menos gastos
           </p>
         </div>
-
         <div className="rounded-3xl border border-gray-200 bg-white p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase text-gray-500">

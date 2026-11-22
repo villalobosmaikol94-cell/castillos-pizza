@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   Camera,
   Play,
+  Upload,
 } from 'lucide-react';
 
 export interface EventPackage {
@@ -67,10 +68,11 @@ export default function EventsAdminManager() {
   const [editTablePrice, setEditTablePrice] = useState('');
   const [editDesc, setEditDesc] = useState('');
 
+  // Subida directa desde computador o celular
   const [mediaTitle, setMediaTitle] = useState('');
-  const [mediaType, setMediaType] = useState<'PHOTO' | 'VIDEO'>('PHOTO');
-  const [mediaUrl, setMediaUrl] = useState('');
   const [mediaFloor, setMediaFloor] = useState('Tercer Piso VIP');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const loadEventsData = async () => {
     if (!supabase) return;
@@ -140,22 +142,47 @@ export default function EventsAdminManager() {
     loadEventsData();
   };
 
-  const handleAddMedia = async (e: React.FormEvent) => {
+  const handleUploadDeviceMedia = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mediaTitle.trim() || !mediaUrl.trim() || !supabase) return;
+    if (!selectedFile || !mediaTitle.trim() || !supabase) return;
 
-    await supabase.from('event_media').insert([
-      {
-        title: mediaTitle.trim(),
-        media_type: mediaType,
-        media_url: mediaUrl.trim(),
-        floor_tag: mediaFloor,
-      },
-    ]);
+    setIsUploading(true);
+    try {
+      const isVideo = selectedFile.type.startsWith('video/');
+      const ext = selectedFile.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
 
-    setMediaTitle('');
-    setMediaUrl('');
-    loadEventsData();
+      const { error: uploadError } = await supabase.storage
+        .from('event-gallery')
+        .upload(fileName, selectedFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        alert(`Error al subir archivo: ${uploadError.message}`);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('event-gallery')
+        .getPublicUrl(fileName);
+
+      await supabase.from('event_media').insert([
+        {
+          title: mediaTitle.trim(),
+          media_type: isVideo ? 'VIDEO' : 'PHOTO',
+          media_url: publicUrlData.publicUrl,
+          floor_tag: mediaFloor,
+        },
+      ]);
+
+      setMediaTitle('');
+      setSelectedFile(null);
+      loadEventsData();
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleDeleteMedia = async (id: string) => {
@@ -361,17 +388,16 @@ export default function EventsAdminManager() {
         <div className="mb-4">
           <h3 className="flex items-center gap-2 text-base font-extrabold text-gray-900">
             <Camera className="h-5 w-5 text-amber-500" />
-            <span>Galería Multimedia de Eventos (Fotos y Videos Reales)</span>
+            <span>Subir Fotos y Videos desde Celular o Computador</span>
           </h3>
           <p className="text-xs text-gray-500">
-            Publica fotos o videos (enlaces directos .jpg/.png/.mp4 o YouTube)
-            para mostrar en la portada principal de /eventos
+            Elige cualquier foto o video de tu galería y publícalo directo en la portada de /eventos
           </p>
         </div>
 
                <form
-          onSubmit={handleAddMedia}
-          className="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-5"
+          onSubmit={handleUploadDeviceMedia}
+          className="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:grid-cols-2 lg:grid-cols-4"
         >
           <input
             type="text"
@@ -379,44 +405,48 @@ export default function EventsAdminManager() {
             value={mediaTitle}
             onChange={(e) => setMediaTitle(e.target.value)}
             placeholder="Título (Ej: Cumpleaños 3er Piso)"
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-900"
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-bold text-gray-900"
           />
-          <select
-            value={mediaType}
-            onChange={(e) => setMediaType(e.target.value as 'PHOTO' | 'VIDEO')}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-800"
-          >
-            <option value="PHOTO">Tipo: Foto HD</option>
-            <option value="VIDEO">Tipo: Video Live</option>
-          </select>
+
           <select
             value={mediaFloor}
             onChange={(e) => setMediaFloor(e.target.value)}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-800"
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-bold text-gray-800"
           >
             <option value="Tercer Piso VIP">Tercer Piso VIP</option>
             <option value="Segundo Piso Social">Segundo Piso Social</option>
           </select>
-          <input
-            type="url"
-            required
-            value={mediaUrl}
-            onChange={(e) => setMediaUrl(e.target.value)}
-            placeholder="Pega enlace de foto o video (https://...)"
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900"
-          />
+
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-amber-400 bg-amber-50/70 px-3 py-2 text-xs font-extrabold text-amber-950 hover:bg-amber-100">
+            <Upload className="h-4 w-4 text-amber-600" />
+            <span className="truncate">
+              {selectedFile ? selectedFile.name : 'Elegir Foto o Video...'}
+            </span>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              required
+              onChange={(e) => {
+                const files = e.target.files;
+                setSelectedFile(files && files.length > 0 ? files.item(0) : null);
+              }}
+              className="hidden"
+            />
+          </label>
+
           <button
             type="submit"
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-xs font-extrabold text-[#FACC15] hover:bg-gray-800"
+            disabled={isUploading || !selectedFile}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-extrabold text-[#FACC15] hover:bg-gray-800 disabled:opacity-40"
           >
             <Plus className="h-4 w-4" />
-            <span>Publicar Media</span>
+            <span>{isUploading ? 'Subiendo...' : 'Publicar en Portada'}</span>
           </button>
         </form>
 
         {mediaList.length === 0 ? (
           <p className="py-4 text-center text-xs text-gray-400">
-            Aún no has subido fotos o videos reales; se mostrarán los escenarios por defecto.
+            Aún no has subido fotos o videos desde tu dispositivo; se mostrarán los escenarios por defecto.
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -511,3 +541,4 @@ export default function EventsAdminManager() {
     </div>
   );
 }
+

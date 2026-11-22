@@ -62,7 +62,7 @@ interface ExistingBooking {
 }
 
 export default function EventosPage() {
-   const [packages, setPackages] = useState<EventPackage[]>([]);
+  const [packages, setPackages] = useState<EventPackage[]>([]);
   const [bookings, setBookings] = useState<ExistingBooking[]>([]);
 
   const [viewDate, setViewDate] = useState<Date>(() => new Date(2026, 10, 1));
@@ -82,7 +82,6 @@ export default function EventosPage() {
   const [notes, setNotes] = useState('');
   const [isBooking, setIsBooking] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
-
   const loadData = async () => {
     if (!supabase) return;
     const [pkgRes, bookRes] = await Promise.all([
@@ -136,6 +135,14 @@ export default function EventosPage() {
     )
     .map((b) => b.event_time);
 
+  useEffect(() => {
+    if (occupiedSlotsForSelection.includes(selectedTime)) {
+      const firstFree = TIME_SLOTS.find(
+        (slot) => !occupiedSlotsForSelection.includes(slot)
+      );
+      if (firstFree) setSelectedTime(firstFree);
+    }
+  }, [selectedDate, selectedFloor, bookings]);
 
   const formatPrice = (amount: number) =>
     new Intl.NumberFormat('es-CO', {
@@ -218,7 +225,7 @@ export default function EventosPage() {
     month: 'long',
     year: 'numeric',
   });
-
+  return (
     <div className="min-h-screen bg-[#070709] text-white selection:bg-amber-400 selection:text-black">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 left-1/2 h-96 w-[750px] -translate-x-1/2 rounded-full bg-amber-500/15 blur-[150px]" />
@@ -433,7 +440,6 @@ export default function EventosPage() {
                 </span>
               </div>
             </div>
-
             <div className="border-t border-white/10 pt-5">
               <label className="mb-2.5 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-amber-300">
                 <Layers className="h-4 w-4" />
@@ -672,5 +678,5 @@ export default function EventosPage() {
         </section>
       </main>
     </div>
-  
+  );
 }

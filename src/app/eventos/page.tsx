@@ -62,20 +62,12 @@ interface ExistingBooking {
 }
 
 export default function EventosPage() {
-  const [packages, setPackages] = useState<EventPackage[]>([]);
+   const [packages, setPackages] = useState<EventPackage[]>([]);
   const [bookings, setBookings] = useState<ExistingBooking[]>([]);
 
-   const [viewDate, setViewDate] = useState<Date>(() => new Date(2026, 10, 1));
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-      useEffect(() => {
-    const hoy = new Date();
-    setViewDate(hoy);
-    setSelectedDate(hoy.toISOString().slice(0, 10));
-  }, []);
-
-    const today = new Date('2026-11-22T12:00:00');
-    return today.toISOString().slice(0, 10);
-  });
+  const [viewDate, setViewDate] = useState<Date>(() => new Date(2026, 10, 1));
+  const [selectedDate, setSelectedDate] = useState<string>('2026-11-22');
+  const [todayIso, setTodayIso] = useState<string>('2026-11-22');
 
   const [selectedFloor, setSelectedFloor] = useState<string>(
     'Tercer Piso (Salón Principal VIP)'
@@ -116,8 +108,17 @@ export default function EventosPage() {
   };
 
   useEffect(() => {
+    const hoy = new Date();
+    const iso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(
+      2,
+      '0'
+    )}-${String(hoy.getDate()).padStart(2, '0')}`;
+    setViewDate(hoy);
+    setSelectedDate(iso);
+    setTodayIso(iso);
     loadData();
   }, []);
+
   const currentFloorObj =
     EVENT_FLOORS.find((f) => f.id === selectedFloor) || EVENT_FLOORS.at(0)!;
 
@@ -135,14 +136,6 @@ export default function EventosPage() {
     )
     .map((b) => b.event_time);
 
-  useEffect(() => {
-    if (occupiedSlotsForSelection.includes(selectedTime)) {
-      const firstFree = TIME_SLOTS.find(
-        (slot) => !occupiedSlotsForSelection.includes(slot)
-      );
-      if (firstFree) setSelectedTime(firstFree);
-    }
-  }, [selectedDate, selectedFloor, bookings]);
 
   const formatPrice = (amount: number) =>
     new Intl.NumberFormat('es-CO', {
@@ -226,11 +219,6 @@ export default function EventosPage() {
     year: 'numeric',
   });
 
-  const nowObj = new Date('2026-11-22T12:00:00');
-  const todayIso = `${nowObj.getFullYear()}-${String(
-    nowObj.getMonth() + 1
-  ).padStart(2, '0')}-${String(nowObj.getDate()).padStart(2, '0')}`;
-  return (
     <div className="min-h-screen bg-[#070709] text-white selection:bg-amber-400 selection:text-black">
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-40 left-1/2 h-96 w-[750px] -translate-x-1/2 rounded-full bg-amber-500/15 blur-[150px]" />
@@ -684,5 +672,5 @@ export default function EventosPage() {
         </section>
       </main>
     </div>
-  );
+  
 }

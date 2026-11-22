@@ -15,47 +15,46 @@ import {
   UserCheck,
 } from 'lucide-react';
 
-interface StaffMember {
+interface WaiterRow {
   id: string;
   name: string;
-  role: string;
-  pin_code: string;
+  code: string;
   active: boolean;
 }
 
 interface AttendanceLog {
   id: string;
   staff_name: string;
-  staff_role: string;
-  event_type: 'IN' | 'OUT';
+  staff_code: string;
+  event_type: 'ENTRADA' | 'SALIDA';
   recorded_at: string;
 }
 
 interface InvoiceRecord {
   id: string;
-  table_number: string;
+  table_or_address: string;
   waiter_name: string;
-  total_amount: number;
-  payment_method: string;
+  total: number;
+  customer_name: string;
   created_at: string;
 }
 
 export default function StaffAndInvoicesManager() {
-  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [staffList, setStaffList] = useState<WaiterRow[]>([]);
   const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
 
   const [newName, setNewName] = useState('');
-  const [newRole, setNewRole] = useState('Mesero');
-  const [newPin, setNewPin] = useState('');
+  const [newCode, setNewCode] = useState('');
+
   const loadAllData = async () => {
     if (!supabase) return;
 
     const [staffRes, attRes, invRes] = await Promise.all([
       supabase
-        .from('staff_members')
+        .from('waiters')
         .select('*')
-        .order('name', { ascending: true }),
+        .order('code', { ascending: true }),
       supabase
         .from('staff_attendance')
         .select('*')
@@ -64,13 +63,13 @@ export default function StaffAndInvoicesManager() {
       supabase
         .from('orders')
         .select('*')
-        .eq('status', 'ENTREGADO')
+        .eq('is_cancelled', false)
         .order('created_at', { ascending: false })
         .limit(40),
     ]);
 
     if (!staffRes.error && staffRes.data)
-      setStaffList(staffRes.data as StaffMember[]);
+      setStaffList(staffRes.data as WaiterRow[]);
     if (!attRes.error && attRes.data)
       setAttendanceLogs(attRes.data as AttendanceLog[]);
     if (!invRes.error && invRes.data)
@@ -79,30 +78,45 @@ export default function StaffAndInvoicesManager() {
 
   useEffect(() => {
     loadAllData();
+
+    if (!supabase) return;
+    const channel = supabase
+      .channel('admin-attendance-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'staff_attendance' },
+        () => {
+          loadAllData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase?.removeChannel(channel);
+    };
   }, []);
 
   const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim() || !newPin.trim() || !supabase) return;
+    if (!newName.trim() || !newCode.trim() || !supabase) return;
 
-    await supabase.from('staff_members').insert([
+    await supabase.from('waiters').insert([
       {
-        name: newName.trim(),
-        role: newRole,
-        pin_code: newPin.trim(),
+        name: newName.trim().toUpperCase(),
+        code: newCode.trim(),
         active: true,
       },
     ]);
 
     setNewName('');
-    setNewPin('');
+    setNewCode('');
     loadAllData();
   };
 
   const handleDeleteStaff = async (id: string, name: string) => {
     if (!confirm(`¿Eliminar al trabajador "${name}" del equipo?`) || !supabase)
       return;
-    await supabase.from('staff_members').delete().eq('id', id);
+    await supabase.from('waiters').delete().eq('id', id);
     loadAllData();
   };
 
@@ -128,8 +142,10 @@ export default function StaffAndInvoicesManager() {
     loadAllData();
   };
 
-  const entryLogs = attendanceLogs.filter((log) => log.event_type === 'IN');
-  const exitLogs = attendanceLogs.filter((log) => log.event_type === 'OUT');
+  const entryLogs = attendanceLogs.filter(
+    (log) => log.event_type === 'ENTRADA'
+  );
+  const exitLogs = attendanceLogs.filter((log) => log.event_type === 'SALIDA');
 
   const formatDateTime = (isoString: string) => {
     try {
@@ -160,7 +176,7 @@ export default function StaffAndInvoicesManager() {
               <span>Control de Ingresos y Salidas de Trabajadores</span>
             </h3>
             <p className="text-xs text-gray-500">
-              Auditoría en tiempo real del reloj de asistencia con borrado individual o reinicio semanal
+              Sincronizado en tiempo real con el Reloj de Asistencia (códigos 101 - 118)
             </p>
           </div>
 
@@ -210,13 +226,11 @@ export default function StaffAndInvoicesManager() {
                   >
                     <div>
                       <p className="font-extrabold text-gray-900">
-                        {log.staff_name}
+                        {log.staff_name}{' '}
+                        <span className="text-gray-400">#{log.staff_code}</span>
                       </p>
-                      <p className="text-[11px] text-gray-500">
-                        {log.staff_role} •{' '}
-                        <strong className="text-emerald-700">
-                          {formatDateTime(log.recorded_at)}
-                        </strong>
+                      <p className="text-[11px] font-bold text-emerald-700">
+                        {formatDateTime(log.recorded_at)}
                       </p>
                     </div>
                     <button
@@ -231,6 +245,7 @@ export default function StaffAndInvoicesManager() {
               </div>
             )}
           </div>
+
           <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4">
             <div className="mb-3 flex items-center justify-between">
               <h4 className="flex items-center gap-1.5 text-sm font-extrabold text-amber-900">
@@ -255,13 +270,11 @@ export default function StaffAndInvoicesManager() {
                   >
                     <div>
                       <p className="font-extrabold text-gray-900">
-                        {log.staff_name}
+                        {log.staff_name}{' '}
+                        <span className="text-gray-400">#{log.staff_code}</span>
                       </p>
-                      <p className="text-[11px] text-gray-500">
-                        {log.staff_role} •{' '}
-                        <strong className="text-amber-800">
-                          {formatDateTime(log.recorded_at)}
-                        </strong>
+                      <p className="text-[11px] font-bold text-amber-800">
+                        {formatDateTime(log.recorded_at)}
                       </p>
                     </div>
                     <button
@@ -282,43 +295,32 @@ export default function StaffAndInvoicesManager() {
         <div className="mb-4">
           <h3 className="flex items-center gap-2 text-base font-extrabold text-gray-900">
             <Users className="h-5 w-5 text-amber-500" />
-            <span>Equipo de Trabajo y PINs de Acceso ({staffList.length})</span>
+            <span>Equipo de Trabajo y Códigos (101 - 118) ({staffList.length})</span>
           </h3>
           <p className="text-xs text-gray-500">
-            Administra los meseros, cocineros y cajeros con su clave personal de
-            4 dígitos
+            Administra los trabajadores activos que pueden marcar entrada, salida y tomar comandas
           </p>
         </div>
 
         <form
           onSubmit={handleAddStaff}
-          className="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:grid-cols-4"
+          className="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:grid-cols-3"
         >
           <input
             type="text"
             required
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Nombre completo del trabajador"
-            className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-900"
+            placeholder="Nombre del trabajador (Ej: DAIRON)"
+            className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold uppercase text-gray-900"
           />
-          <select
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
-            className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-800"
-          >
-            <option value="Mesero">Cargo: Mesero</option>
-            <option value="Cocina / Pizzero">Cargo: Cocina / Pizzero</option>
-            <option value="Caja / Barra">Cargo: Caja / Barra</option>
-            <option value="Domiciliario">Cargo: Domiciliario</option>
-          </select>
           <input
             type="text"
             required
             maxLength={6}
-            value={newPin}
-            onChange={(e) => setNewPin(e.target.value)}
-            placeholder="PIN (Ej: 1019)"
+            value={newCode}
+            onChange={(e) => setNewCode(e.target.value)}
+            placeholder="Código (Ej: 119)"
             className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-extrabold tracking-widest text-gray-900"
           />
           <button
@@ -342,9 +344,9 @@ export default function StaffAndInvoicesManager() {
                   <span>{member.name}</span>
                 </p>
                 <p className="mt-0.5 text-[11px] text-gray-500">
-                  {member.role} • PIN:{' '}
+                  Código:{' '}
                   <span className="rounded bg-gray-200 px-1.5 py-0.5 font-mono font-extrabold text-gray-800">
-                    {member.pin_code}
+                    #{member.code}
                   </span>
                 </p>
               </div>
@@ -359,6 +361,7 @@ export default function StaffAndInvoicesManager() {
           ))}
         </div>
       </div>
+
       <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xs">
         <div className="border-b border-gray-100 px-6 py-4">
           <h3 className="flex items-center gap-2 text-base font-extrabold text-gray-900">
@@ -380,24 +383,19 @@ export default function StaffAndInvoicesManager() {
               >
                 <div>
                   <span className="rounded-lg bg-gray-900 px-2.5 py-1 font-extrabold text-[#FACC15]">
-                    {inv.table_number}
+                    {inv.table_or_address}
                   </span>
                   <span className="ml-2.5 font-extrabold text-gray-900">
-                    Atendió: {inv.waiter_name || 'Sin asignar'}
+                    Atendió: {inv.waiter_name || 'Autoservicio QR'}
                   </span>
                   <span className="ml-2 text-gray-400">
                     • {formatDateTime(inv.created_at)}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-bold text-gray-600">
-                    {inv.payment_method || 'Efectivo'}
-                  </span>
-                  <span className="text-sm font-extrabold text-emerald-700">
-                    {formatPrice(Number(inv.total_amount || 0))}
-                  </span>
-                </div>
+                <span className="text-sm font-extrabold text-emerald-700">
+                  {formatPrice(Number(inv.total || 0))}
+                </span>
               </div>
             ))}
           </div>

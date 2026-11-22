@@ -4,143 +4,252 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { MENU_CATEGORIES } from '@/data/menuData';
-import { MenuCategory, PrintStation, Product } from '@/types/restaurant';
-import {
-  getStoredMenu,
-  saveStoredMenu,
-  resetStoredMenu,
-} from '@/lib/menuStorage';
+import { MenuCategory, Product } from '@/types/restaurant';
+import { supabase } from '@/lib/supabase';
 import AccountingDashboard from '@/components/AccountingDashboard';
+import InventoryExpensesManager from '@/components/InventoryAndExpensesManager';
+import StaffAndInvoicesManager from '@/components/StaffAndInvoicesManager';
+import EventsAdminManager from '@/components/EventsAdminManager';
+import TableQRGenerator from '@/components/QrTablesGenerator';
 import {
   Lock,
   ArrowLeft,
+  UtensilsCrossed,
+  BarChart3,
+  Package,
+  Users,
+  PartyPopper,
+  QrCode,
+  ShieldCheck,
+  Tv,
+  Clock,
   Plus,
-  Search,
+  Pencil,
+  Trash2,
   Check,
   X,
+  Search,
   RotateCcw,
-  ChefHat,
-  Wine,
-  Eye,
-  EyeOff,
-  Pencil,
-  Utensils,
-  BarChart3,
 } from 'lucide-react';
 
-const ADMIN_PIN = '1989';
+const MASTER_ADMIN_PIN = '1989';
 
-export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+type AdminTab =
+  | 'CARTA'
+  | 'CONTABILIDAD'
+  | 'INVENTARIO'
+  | 'PERSONAL'
+  | 'EVENTOS'
+  | 'QR';
+
+export default function AdminSecretPage() {
+  const [unlocked, setUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<AdminTab>('CARTA');
 
-  const [activeTab, setActiveTab] = useState<'MENU' | 'CONTABILIDAD'>('MENU');
+  const [items, setItems] = useState<Product[]>([]);
+  const [searchMenu, setSearchMenu] = useState('');
+  const [selectedCat, setSelectedCat] = useState<string>('Todas');
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState<MenuCategory | 'Todas'>('Todas');
+  const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState<MenuCategory>('Pizza');
+  const [newPrice, setNewPrice] = useState('');
+  const [newStation, setNewStation] = useState<'COCINA' | 'BARRA'>('COCINA');
+  const [newDesc, setNewDesc] = useState('');
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [tempPrice, setTempPrice] = useState<string>('');
-
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newPrice, setNewPrice] = useState('');
-  const [newCategory, setNewCategory] = useState<MenuCategory>('Pizza');
-  const [newStation, setNewStation] = useState<PrintStation>('COCINA');
-
-  useEffect(() => {
-    setProducts(getStoredMenu());
-  }, []);
-
-  const handleLogin = (e: React.FormEvent) => {
+  const [editName, setEditName] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editAvailable, setEditAvailable] = useState(true);
+  const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput === ADMIN_PIN) {
-      setIsAuthenticated(true);
-      setPinError(false);
+    if (pinInput.trim() === MASTER_ADMIN_PIN) {
+      setUnlocked(true);
+      setError('');
     } else {
-      setPinError(true);
+      setError('Clave de Administrador incorrecta.');
     }
   };
 
-  const toggleAvailability = (id: string) => {
-    const updated = products.map((p) =>
-      p.id === id ? { ...p, available: p.available === false ? true : false } : p
-    );
-    setProducts(updated);
-    saveStoredMenu(updated);
+  useEffect(() => {
+    if (!unlocked) return;
+
+    const loadMenu = async () => {
+      if (supabase) {
+        const { data, error: fetchError } = await supabase
+          .from('menu_items')
+          .select('*')
+          .order('created_at', { ascending: true });
+
+        if (!fetchError && data && data.length > 0) {
+          const mapped: Product[] = data.map((row) => ({
+            id: String(row.id),
+            name: String(row.name),
+            description: String(row.description || ''),
+            price: Number(row.base_price || row.price || 0),
+            category: row.category as MenuCategory,
+            station: (row.station as 'COCINA' | 'BARRA') || 'COCINA',
+            popular: Boolean(row.popular),
+            available: row.available !== false,
+            options: row.options || undefined,
+          }));
+          setItems(mapped);
+          return;
+        }
+      }
+
+      const saved = localStorage.getItem('castillos_custom_menu');
+      if (saved) {
+        try {
+          setItems(JSON.parse(saved) as Product[]);
+        } catch {
+          setItems([]);
+        }
+      }
+    };
+
+    loadMenu();
+  }, [unlocked]);
+  const syncMenuChanges = async (updatedList: Product[]) => {
+    setItems(updatedList);
+    localStorage.setItem('castillos_custom_menu', JSON.stringify(updatedList));
   };
 
-  const startEditingPrice = (product: Product) => {
-    setEditingId(product.id);
-    setTempPrice(String(product.price));
-  };
-
-  const saveEditedPrice = (id: string) => {
-    const numericPrice = Number(tempPrice);
-    if (!numericPrice || numericPrice < 0) return;
-
-    const updated = products.map((p) =>
-      p.id === id ? { ...p, price: numericPrice } : p
-    );
-    setProducts(updated);
-    saveStoredMenu(updated);
-    setEditingId(null);
-  };
-
-  const handleCreateProduct = (e: React.FormEvent) => {
+  const handleAddDish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newPrice) return;
 
-    const created: Product = {
+    const newItem: Product = {
       id: `custom-${Date.now()}`,
       name: newName.trim(),
-      description: newDesc.trim() || 'Especialidad de la casa.',
+      description:
+        newDesc.trim() || 'Preparación especial de Castillo’s Pizza.',
       price: Number(newPrice),
       category: newCategory,
-      station: newCategory === 'Bebidas' ? 'BARRA' : newStation,
+      station: newStation,
       available: true,
     };
 
-    const updated = [created, ...products];
-    setProducts(updated);
-    saveStoredMenu(updated);
+    if (supabase) {
+      await supabase.from('menu_items').insert([
+        {
+          id: newItem.id,
+          name: newItem.name,
+          description: newItem.description,
+          base_price: newItem.price,
+          category: newItem.category,
+          station: newItem.station,
+          available: true,
+        },
+      ]);
+    }
 
+    await syncMenuChanges([newItem, ...items]);
     setNewName('');
-    setNewDesc('');
     setNewPrice('');
-    setShowNewModal(false);
+    setNewDesc('');
   };
 
-  const handleReset = () => {
-    if (confirm('¿Deseas restaurar todos los precios y platos originales?')) {
-      setProducts(resetStoredMenu());
+  const startEditing = (item: Product) => {
+    setEditingId(item.id);
+    setEditName(item.name);
+    setEditPrice(String(item.price));
+    setEditDesc(item.description);
+    setEditAvailable(item.available !== false);
+  };
+
+  const saveEdit = async (id: string) => {
+    const updated = items.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            name: editName.trim() || item.name,
+            price: Number(editPrice) || item.price,
+            description: editDesc.trim(),
+            available: editAvailable,
+          }
+        : item
+    );
+
+    if (supabase) {
+      await supabase
+        .from('menu_items')
+        .update({
+          name: editName.trim(),
+          base_price: Number(editPrice),
+          description: editDesc.trim(),
+          available: editAvailable,
+        })
+        .eq('id', id);
+    }
+
+    await syncMenuChanges(updated);
+    setEditingId(null);
+  };
+
+  const handleDeleteDish = async (id: string) => {
+    if (!confirm('¿Eliminar este producto de la carta?')) return;
+    if (supabase) {
+      await supabase.from('menu_items').delete().eq('id', id);
+    }
+    await syncMenuChanges(items.filter((i) => i.id !== id));
+  };
+
+  const handleReloadFromCloud = async () => {
+    if (!supabase) return;
+    const { data, error: fetchError } = await supabase
+      .from('menu_items')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (!fetchError && data) {
+      const mapped: Product[] = data.map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        description: String(row.description || ''),
+        price: Number(row.base_price || row.price || 0),
+        category: row.category as MenuCategory,
+        station: (row.station as 'COCINA' | 'BARRA') || 'COCINA',
+        popular: Boolean(row.popular),
+        available: row.available !== false,
+        options: row.options || undefined,
+      }));
+      await syncMenuChanges(mapped);
     }
   };
-
   const formatPrice = (amount: number) =>
     new Intl.NumberFormat('es-CO', {
       style: 'currency',
       currency: 'COP',
       maximumFractionDigits: 0,
     }).format(amount);
-  if (!isAuthenticated) {
+
+  const filteredMenu = items.filter((item) => {
+    const matchesCat =
+      selectedCat === 'Todas' || item.category === selectedCat;
+    const matchesSearch = item.name
+      .toLowerCase()
+      .includes(searchMenu.toLowerCase());
+    return matchesCat && matchesSearch;
+  });
+
+  if (!unlocked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAFAFA] px-4">
         <div className="w-full max-w-sm rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-lg">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-900 text-[#FACC15]">
             <Lock className="h-7 w-7" />
           </div>
           <h1 className="text-xl font-extrabold text-gray-900">
-            Administración Castillo&apos;s
+            Acceso Administrador
           </h1>
           <p className="mt-1 text-xs text-gray-500">
-            Ingresa el PIN de acceso para gestionar precios y contabilidad
+            Área restringida para el propietario de Castillo&apos;s Pizza
           </p>
 
-          <form onSubmit={handleLogin} className="mt-6 space-y-4">
+          <form onSubmit={handleUnlock} className="mt-6 space-y-4">
             <input
               type="password"
               inputMode="numeric"
@@ -152,17 +261,13 @@ export default function AdminPage() {
               autoFocus
             />
 
-            {pinError && (
-              <p className="text-xs font-bold text-red-600">
-                PIN incorrecto. Intenta nuevamente.
-              </p>
-            )}
+            {error && <p className="text-xs font-bold text-red-600">{error}</p>}
 
             <button
               type="submit"
-              className="w-full rounded-2xl bg-[#FACC15] py-3.5 text-sm font-extrabold text-gray-900 shadow-sm hover:bg-amber-400"
+              className="w-full rounded-2xl bg-gray-900 py-3.5 text-sm font-extrabold text-[#FACC15] shadow-sm hover:bg-gray-800"
             >
-              Ingresar al Panel
+              Desbloquear Panel Admin
             </button>
           </form>
 
@@ -171,341 +276,379 @@ export default function AdminPage() {
             className="mt-5 inline-flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-gray-700"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Volver a la tienda</span>
+            <span>Volver al Menú Público</span>
           </Link>
         </div>
       </div>
     );
   }
-
-  const filteredProducts = products.filter((p) => {
-    const matchesCat =
-      filterCategory === 'Todas' || p.category === filterCategory;
-    const matchesSearch =
-      !searchQuery.trim() ||
-      p.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCat && matchesSearch;
-  });
-
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-gray-900">
-      {/* Cabecera Administrativa con Pestañas */}
       <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3.5 py-2 text-xs font-bold text-gray-700 hover:border-amber-300 hover:bg-amber-50"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span>Ver Tienda</span>
-            </Link>
-
-            <div className="relative h-10 w-24">
-              <Image
-                src="/logo-castillos.png"
-                alt="Castillo's Pizza"
-                fill
-                className="object-contain"
-              />
-            </div>
-
-            {/* Selector de Pestañas: Carta vs Contabilidad */}
-            <div className="flex items-center rounded-2xl border border-gray-200 bg-gray-100/80 p-1">
-              <button
-                onClick={() => setActiveTab('MENU')}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all ${
-                  activeTab === 'MENU'
-                    ? 'bg-white text-gray-900 shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3.5 py-2 text-xs font-bold text-gray-700 hover:border-amber-300 hover:bg-amber-50"
               >
-                <Utensils className="h-3.5 w-3.5 text-amber-600" />
-                <span>Carta y Precios</span>
-              </button>
+                <ArrowLeft className="h-4 w-4" />
+                <span>Tienda Pública</span>
+              </Link>
 
-              <button
-                onClick={() => setActiveTab('CONTABILIDAD')}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-extrabold transition-all ${
-                  activeTab === 'CONTABILIDAD'
-                    ? 'bg-[#FACC15] text-gray-900 shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                <BarChart3 className="h-3.5 w-3.5 text-gray-900" />
-                <span>Contabilidad</span>
-              </button>
-            </div>
-          </div>
-
-          {activeTab === 'MENU' && (
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={handleReset}
-                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
-                title="Restaurar carta original"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Restaurar</span>
-              </button>
-
-              <button
-                onClick={() => setShowNewModal(true)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#FACC15] px-4 py-2.5 text-xs font-extrabold text-gray-900 shadow-xs hover:bg-amber-400"
-              >
-                <Plus className="h-4 w-4 stroke-[2.5]" />
-                <span>Nuevo Plato</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {activeTab === 'CONTABILIDAD' ? (
-          <AccountingDashboard />
-        ) : (
-          <>
-            {/* Filtros de Búsqueda y Categoría */}
-            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar plato para editar precio o disponibilidad..."
-                  className="w-full rounded-2xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 focus:border-amber-400 focus:outline-none"
+              <div className="relative h-10 w-24">
+                <Image
+                  src="/logo-castillos.png"
+                  alt="Castillo's Pizza"
+                  fill
+                  className="object-contain"
                 />
               </div>
 
-              <select
-                value={filterCategory}
-                onChange={(e) =>
-                  setFilterCategory(e.target.value as MenuCategory | 'Todas')
-                }
-                className="rounded-2xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 focus:border-amber-400 focus:outline-none"
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-extrabold text-[#FACC15]">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Panel Dueño</span>
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/tv-cocina"
+                target="_blank"
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-xs font-extrabold text-gray-800 hover:border-amber-400 hover:bg-amber-50"
               >
-                <option value="Todas">Todas las categorías</option>
-                {MENU_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <Tv className="h-3.5 w-3.5 text-amber-600" />
+                <span>Abrir TV Cocina</span>
+              </Link>
 
-            {/* Lista de Productos Editables */}
-            <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
-              {filteredProducts.map((product) => {
-                const isAvailable = product.available !== false;
-                const isEditing = editingId === product.id;
-
-                return (
-                  <div
-                    key={product.id}
-                    className={`flex flex-col justify-between rounded-2xl border p-4 transition-all ${
-                      isAvailable
-                        ? 'border-gray-200 bg-white shadow-2xs'
-                        : 'border-gray-200/70 bg-gray-100/70 opacity-75'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                            product.station === 'BARRA'
-                              ? 'bg-sky-50 text-sky-700'
-                              : 'bg-amber-50 text-amber-800'
-                          }`}
-                        >
-                          {product.station === 'BARRA' ? (
-                            <Wine className="h-3 w-3" />
-                          ) : (
-                            <ChefHat className="h-3 w-3" />
-                          )}
-                          {product.category}
-                        </span>
-
-                        <button
-                          onClick={() => toggleAvailability(product.id)}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold transition-colors ${
-                            isAvailable
-                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                              : 'bg-red-100 text-red-700 hover:bg-red-200'
-                          }`}
-                        >
-                          {isAvailable ? (
-                            <>
-                              <Eye className="h-3.5 w-3.5" />
-                              <span>Disponible</span>
-                            </>
-                          ) : (
-                            <>
-                              <EyeOff className="h-3.5 w-3.5" />
-                              <span>Agotado</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <h3 className="mt-2.5 text-base font-extrabold text-gray-900">
-                        {product.name}
-                      </h3>
-                      <p className="mt-1 line-clamp-2 text-xs text-gray-500">
-                        {product.description}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-                      {isEditing ? (
-                        <div className="flex w-full items-center gap-2">
-                          <input
-                            type="number"
-                            value={tempPrice}
-                            onChange={(e) => setTempPrice(e.target.value)}
-                            className="w-full rounded-xl border border-amber-400 bg-amber-50/40 px-3 py-1.5 text-sm font-extrabold text-gray-900 focus:outline-none"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => saveEditedPrice(product.id)}
-                            className="rounded-xl bg-emerald-500 p-2 text-white hover:bg-emerald-600"
-                            title="Guardar precio"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="rounded-xl bg-gray-200 p-2 text-gray-700 hover:bg-gray-300"
-                            title="Cancelar"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="text-lg font-extrabold text-gray-900">
-                            {formatPrice(product.price)}
-                          </span>
-                          <button
-                            onClick={() => startEditingPrice(product)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-700 hover:border-amber-400 hover:bg-amber-50"
-                          >
-                            <Pencil className="h-3.5 w-3.5 text-amber-600" />
-                            <span>Editar Precio</span>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </main>
-      {/* Modal para Crear Nuevo Plato o Bebida */}
-      {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/30 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-extrabold text-gray-900">
-                Agregar Nuevo Producto
-              </h2>
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="rounded-full bg-gray-100 p-1.5 text-gray-600 hover:bg-gray-200"
+              <Link
+                href="/asistencia"
+                target="_blank"
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-xs font-extrabold text-gray-800 hover:border-emerald-400 hover:bg-emerald-50"
               >
-                <X className="h-4 w-4" />
-              </button>
+                <Clock className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Reloj Asistencia</span>
+              </Link>
             </div>
+          </div>
 
-            <form onSubmit={handleCreateProduct} className="space-y-3.5">
-              <div>
-                <label className="mb-1 block text-xs font-bold text-gray-700">
-                  Nombre del Plato o Bebida
-                </label>
+          <nav className="mt-3 flex items-center gap-1.5 overflow-x-auto border-t border-gray-100 pt-2.5 pb-1">
+            <button
+              onClick={() => setActiveTab('CARTA')}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all ${
+                activeTab === 'CARTA'
+                  ? 'bg-[#FACC15] text-gray-900 shadow-2xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <UtensilsCrossed className="h-3.5 w-3.5" />
+              <span>Carta y Precios</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('CONTABILIDAD')}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all ${
+                activeTab === 'CONTABILIDAD'
+                  ? 'bg-[#FACC15] text-gray-900 shadow-2xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              <span>Contabilidad</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('INVENTARIO')}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all ${
+                activeTab === 'INVENTARIO'
+                  ? 'bg-[#FACC15] text-gray-900 shadow-2xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Package className="h-3.5 w-3.5" />
+              <span>Inventario y Gastos</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('PERSONAL')}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all ${
+                activeTab === 'PERSONAL'
+                  ? 'bg-[#FACC15] text-gray-900 shadow-2xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Users className="h-3.5 w-3.5" />
+              <span>18 Meseros y Facturas</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('EVENTOS')}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all ${
+                activeTab === 'EVENTOS'
+                  ? 'bg-[#FACC15] text-gray-900 shadow-2xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <PartyPopper className="h-3.5 w-3.5" />
+              <span>Eventos VIP</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('QR')}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-extrabold transition-all ${
+                activeTab === 'QR'
+                  ? 'bg-[#FACC15] text-gray-900 shadow-2xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <QrCode className="h-3.5 w-3.5" />
+              <span>Códigos QR</span>
+            </button>
+          </nav>
+        </div>
+      </header>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {activeTab === 'CONTABILIDAD' && <AccountingDashboard />}
+        {activeTab === 'INVENTARIO' && <InventoryExpensesManager />}
+        {activeTab === 'PERSONAL' && <StaffAndInvoicesManager />}
+        {activeTab === 'EVENTOS' && <EventsAdminManager />}
+        {activeTab === 'QR' && <TableQRGenerator />}
+
+        {activeTab === 'CARTA' && (
+          <div className="space-y-8">
+            <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-2xs">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-extrabold text-gray-900">
+                    Agregar Nuevo Plato o Bebida a la Carta
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Los cambios se reflejan inmediatamente en el menú digital y en
+                    las comandas
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleReloadFromCloud}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3.5 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Sincronizar desde Nube</span>
+                </button>
+              </div>
+
+              <form
+                onSubmit={handleAddDish}
+                className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
+              >
                 <input
                   type="text"
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Ej: Pizza Especial de la Casa"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
+                  placeholder="Nombre del producto"
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs font-bold text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
                 />
-              </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-bold text-gray-700">
-                  Ingredientes / Descripción
-                </label>
-                <textarea
-                  rows={2}
+                <select
+                  value={newCategory}
+                  onChange={(e) =>
+                    setNewCategory(e.target.value as MenuCategory)
+                  }
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:border-amber-400 focus:bg-white focus:outline-none"
+                >
+                  {MENU_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="number"
+                  required
+                  min={500}
+                  step={100}
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  placeholder="Precio ($ COP)"
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs font-bold text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
+                />
+
+                <select
+                  value={newStation}
+                  onChange={(e) =>
+                    setNewStation(e.target.value as 'COCINA' | 'BARRA')
+                  }
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:border-amber-400 focus:bg-white focus:outline-none"
+                >
+                  <option value="COCINA">Estación: COCINA</option>
+                  <option value="BARRA">Estación: BARRA / BEBIDAS</option>
+                </select>
+
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#FACC15] px-4 py-2.5 text-xs font-extrabold text-gray-900 shadow-2xs hover:bg-amber-400"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Agregar a Carta</span>
+                </button>
+
+                <input
+                  type="text"
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Describe los ingredientes..."
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2 text-sm text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
+                  placeholder="Descripción breve e ingredientes (opcional)..."
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs text-gray-800 focus:border-amber-400 focus:bg-white focus:outline-none sm:col-span-2 lg:col-span-5"
                 />
-              </div>
+              </form>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-gray-700">
-                    Precio (COP)
-                  </label>
+            <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-2xs">
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
-                    type="number"
-                    required
-                    value={newPrice}
-                    onChange={(e) => setNewPrice(e.target.value)}
-                    placeholder="25000"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm font-bold text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
+                    type="text"
+                    value={searchMenu}
+                    onChange={(e) => setSearchMenu(e.target.value)}
+                    placeholder="Buscar producto en carta..."
+                    className="w-full rounded-full border border-gray-200 bg-gray-50 py-2 pl-9 pr-4 text-xs text-gray-800 focus:border-amber-400 focus:bg-white focus:outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-gray-700">
-                    Categoría
-                  </label>
-                  <select
-                    value={newCategory}
-                    onChange={(e) => {
-                      const cat = e.target.value as MenuCategory;
-                      setNewCategory(cat);
-                      setNewStation(cat === 'Bebidas' ? 'BARRA' : 'COCINA');
-                    }}
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-bold text-gray-800 focus:border-amber-400 focus:bg-white focus:outline-none"
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    onClick={() => setSelectedCat('Todas')}
+                    className={`rounded-full px-3 py-1 text-xs font-extrabold ${
+                      selectedCat === 'Todas'
+                        ? 'bg-gray-900 text-[#FACC15]'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                   >
-                    {MENU_CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
+                    Todas ({items.length})
+                  </button>
+                  {MENU_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCat(cat)}
+                      className={`rounded-full px-3 py-1 text-xs font-bold ${
+                        selectedCat === cat
+                          ? 'bg-gray-900 text-[#FACC15]'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
                 </div>
               </div>
+              <div className="divide-y divide-gray-100">
+                {filteredMenu.map((item) => {
+                  const isEditing = editingId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-4 py-3.5"
+                    >
+                      {isEditing ? (
+                        <div className="grid w-full grid-cols-1 gap-2.5 sm:grid-cols-4">
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-extrabold text-gray-900"
+                          />
+                          <input
+                            type="number"
+                            value={editPrice}
+                            onChange={(e) => setEditPrice(e.target.value)}
+                            className="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-extrabold text-gray-900"
+                          />
+                          <input
+                            type="text"
+                            value={editDesc}
+                            onChange={(e) => setEditDesc(e.target.value)}
+                            className="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs text-gray-800"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={editAvailable}
+                                onChange={(e) =>
+                                  setEditAvailable(e.target.checked)
+                                }
+                                className="rounded text-amber-500"
+                              />
+                              <span>Disponible</span>
+                            </label>
+                            <button
+                              onClick={() => saveEdit(item.id)}
+                              className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-extrabold text-white"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="rounded-xl bg-gray-200 px-3 py-2 text-xs font-bold text-gray-700"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="max-w-xl">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-extrabold text-gray-900">
+                                {item.name}
+                              </span>
+                              <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">
+                                {item.category}
+                              </span>
+                              {item.available === false && (
+                                <span className="rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-extrabold text-red-700">
+                                  AGOTADO
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              {item.description}
+                            </p>
+                          </div>
 
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs font-semibold text-gray-600">
-                Destino de impresión automático:{' '}
-                <strong
-                  className={
-                    newStation === 'BARRA' ? 'text-sky-700' : 'text-amber-700'
-                  }
-                >
-                  {newStation === 'BARRA' ? 'BARRA / BEBIDAS' : 'COCINA'}
-                </strong>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-extrabold text-emerald-700">
+                              {formatPrice(item.price)}
+                            </span>
+
+                            <button
+                              onClick={() => startEditing(item)}
+                              className="rounded-xl border border-gray-200 bg-gray-50 p-2 text-gray-600 hover:border-amber-400 hover:bg-amber-50 hover:text-gray-900"
+                              title="Editar precio o disponibilidad"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteDish(item.id)}
+                              className="rounded-xl border border-red-100 bg-red-50/70 p-2 text-red-600 hover:bg-red-600 hover:text-white"
+                              title="Eliminar producto"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-[#FACC15] py-3 text-sm font-extrabold text-gray-900 shadow-sm hover:bg-amber-400"
-              >
-                Guardar y Publicar en Tienda
-              </button>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   );
 }

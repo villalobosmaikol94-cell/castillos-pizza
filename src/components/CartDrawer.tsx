@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { CartItem, Order, WaiterProfile } from '@/types/restaurant';
 import { supabase } from '@/lib/supabase';
 import {
@@ -20,7 +21,7 @@ import {
   Printer,
 } from 'lucide-react';
 
-const RESTAURANT_WHATSAPP = '573045959660';
+const RESTAURANT_WHATSAPP = '573012802801';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -238,6 +239,7 @@ export default function CartDrawer({
       );
 
       setOrderSuccess(newOrder);
+            localStorage.setItem('castillos_last_order_id', newOrder.id);
       onClearCart();
       setCustomerName('');
       setTableOrAddress(lockedTable || '');
@@ -322,6 +324,17 @@ export default function CartDrawer({
                   >
                     <MessageCircle className="h-5 w-5" />
                     <span>Abrir WhatsApp Nuevamente</span>
+                                    <Link
+                  href={`/rastreo?orden=${orderSuccess.id}`}
+                  onClick={() => {
+                    setOrderSuccess(null);
+                    onClose();
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-3.5 text-sm font-extrabold text-[#FACC15] shadow-sm transition-colors hover:bg-gray-800"
+                >
+                  <Bike className="h-5 w-5" />
+                  <span>Seguir mi Pedido en Vivo</span>
+                </Link>
                   </button>
                 )}
 

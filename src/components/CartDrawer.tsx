@@ -321,15 +321,23 @@ export default function CartDrawer({
                   </button>
                 )}
 
-                {orderSuccess.orderType === 'DOMICILIO' && (
-                  <button
-                    type="button"
-                    onClick={() => openWhatsAppDelivery(orderSuccess)}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] py-3.5 text-sm font-extrabold text-white shadow-sm transition-all hover:bg-[#1ebe5d]"
+                               {orderSuccess.orderType === 'DOMICILIO' && (
+                  <a
+                    href={`https://whatsapp.com{String(
+                      RESTAURANT_WHATSAPP
+                    ).replace(/\D/g, '')}&text=${encodeURIComponent(
+                      `Hola Castillo's Pizza, confirmo mi pedido *#${orderSuccess.id}* a nombre de *${orderSuccess.customerName}* (${orderSuccess.tableOrAddress}).`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] py-3.5 text-sm font-extrabold text-white shadow-sm transition-colors hover:bg-[#1ebe5d]"
                   >
                     <MessageCircle className="h-5 w-5" />
-                    <span>Abrir WhatsApp Nuevamente</span>
-                                    <Link
+                    <span>Abrir WhatsApp para Confirmar</span>
+                  </a>
+                )}
+
+                <Link
                   href={`/rastreo?orden=${orderSuccess.id}`}
                   onClick={() => {
                     setOrderSuccess(null);
@@ -340,8 +348,7 @@ export default function CartDrawer({
                   <Bike className="h-5 w-5" />
                   <span>Seguir mi Pedido en Vivo</span>
                 </Link>
-                  </button>
-                )}
+
 
                 <button
                   onClick={() => {

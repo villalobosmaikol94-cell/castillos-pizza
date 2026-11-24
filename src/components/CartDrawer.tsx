@@ -146,8 +146,9 @@ export default function CartDrawer({
     const phoneNumber = RESTAURANT_WHATSAPP;
     const encodedMessage = encodeURIComponent(text);
 
-   const urlWeb = `https://whatsapp.com{+573012802801 }&text=${encodedMessage}`;
-    const urlApp = `whatsapp://send?phone=${phoneNumber}&text=${encodedMessage}`;
+       const cleanPhone = String(phoneNumber).replace(/\D/g, '');
+    const urlWeb = `https://whatsapp.com{cleanPhone}&text=${encodedMessage}`;
+    const urlApp = `whatsapp://send?phone=${cleanPhone}&text=${encodedMessage}`;
     const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     if (esMovil) {
@@ -156,9 +157,13 @@ export default function CartDrawer({
         if (!document.hidden) window.location.href = urlWeb;
       }, 1500);
     } else {
-      window.open(urlWeb, '_blank', 'noopener,noreferrer');
+      const win = window.open(urlWeb, '_blank');
+      if (!win) {
+        window.location.href = urlWeb;
+      }
     }
   };
+
 
   // Envía señal en tiempo real a Caja (/cocina-barra) para imprimir comandas y factura
   const handleRemotePrintFromPhone = async (order: Order) => {

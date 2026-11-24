@@ -316,18 +316,26 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
         }
       }
 
+            const fullTableItems = existingOrder
+        ? [...existingOrder.items, ...draftItems]
+        : [...draftItems];
+      const fullTableTotal = existingOrder
+        ? Number(existingOrder.total || 0) + addedSubtotal
+        : addedSubtotal;
+
       setLastComanda({
         orderId: finalOrderId,
         spotLabel: selectedSpotLabel,
         waiterName: waiterDisplayName,
-        items: [...draftItems],
-        total: addedSubtotal,
+        items: fullTableItems,
+        total: fullTableTotal,
         createdAt: new Date().toLocaleTimeString('es-CO', {
           hour: '2-digit',
           minute: '2-digit',
         }),
         isAddition: Boolean(existingOrder),
       });
+
 
       setDraftItems([]);
       setCustomerNameInput('');
@@ -786,6 +794,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                               (i) => i.station === 'BARRA'
                             );
                             const buildTicketSection = (
+                              
                               title: string,
                               list: typeof lastComanda.items
                             ) =>
@@ -799,6 +808,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                                           `<div style="font-size:13px;font-weight:bold;margin:3px 0;">${it.quantity}x ${it.name}</div>`
                                       )
                                       .join('')}
+                                      
                                   </div>`;
 
                             const win = window.open(
@@ -839,6 +849,23 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                                   ${buildTicketSection('COMANDA COCINA', cocinaItems)}
                                   ${buildTicketSection('COMANDA BARRA', barraItems)}
                                   <div style="border-top:1px dashed #000;margin-top:12px;padding-top:6px;text-align:center;font-size:11px;">
+                                                                    <div style="border-top:2px solid #000;margin-top:10px;padding-top:6px;">
+                                    <div style="font-weight:bold;font-size:12px;margin-bottom:4px;">DETALLE COMPLETO DE CUENTA:</div>
+                                    ${lastComanda.items
+                                      .map(
+                                        (it) =>
+                                          `<div style="display:flex;justify-content:space-between;font-size:12px;margin:2px 0;">
+                                            <span>${it.quantity}x ${it.name}</span>
+                                            <span>$${(it.finalPrice * it.quantity).toLocaleString('es-CO')}</span>
+                                          </div>`
+                                      )
+                                      .join('')}
+                                    <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:bold;border-top:1px dashed #000;margin-top:6px;padding-top:6px;">
+                                      <span>TOTAL MESA:</span>
+                                      <span>$${lastComanda.total.toLocaleString('es-CO')}</span>
+                                    </div>
+                                  </div>
+
                                     --- FIN DE COMANDA ---
                                   </div>
                                   <script>

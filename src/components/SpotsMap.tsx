@@ -12,13 +12,16 @@ import { MENU_CATEGORIES, MENU_PRODUCTS } from '@/data/menuData';
 import {
   Armchair,
   CheckCircle2,
+  ChefHat,
   Lock,
   Layers,
   Plus,
+  Printer,
   Search,
   Send,
   ShoppingBag,
   Trash2,
+  Wine,
   X,
 } from 'lucide-react';
 
@@ -34,9 +37,23 @@ interface ActiveTableOrder {
   total: number;
   status: string;
   waiter_name?: string;
+  created_at?: string;
+}
+
+interface PrintedTicketData {
+  orderId: string;
+  spotLabel: string;
+  waiterName: string;
+  items: CartItem[];
+  total: number;
+  createdAt: string;
+  isAddition: boolean;
 }
 
 type FloorTab = 'PISO_1' | 'PISO_2' | 'PISO_3';
+
+const BAR_CHAIRS_NUMBERS = Array.from({ length: 7 }, (_, i) => i + 1);
+
 
 export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
   const [spots, setSpots] = useState<RestaurantSpot[]>([]);
@@ -58,9 +75,8 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
   const [customerNameInput, setCustomerNameInput] = useState('');
   const [waiterError, setWaiterError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastComanda, setLastComanda] = useState<PrintedTicketData | null>(null);
   const loadSpotsAndOrders = async () => {
-   
-
     if (!supabase) {
       setLoading(false);
       return;
@@ -97,7 +113,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
           id: String(row.id),
           name: String(row.name),
           description: String(row.description || ''),
-          price: Number(row.price || 0),
+          price: Number(row.price || row.base_price || 0),
           category: row.category as MenuCategory,
           station: (row.station as 'COCINA' | 'BARRA') || 'COCINA',
           popular: Boolean(row.popular),
@@ -152,6 +168,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
     setSelectedSpotLabel(spotLabel);
     setDraftItems([]);
     setWaiterError('');
+    setLastComanda(null);
     setSearchQuery('');
     setSelectedCategory('Todas');
     if (onSelectSpotForOrder) {
@@ -189,7 +206,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
 
     const cleanCode = waiterCodeInput.trim();
     if (!cleanCode) {
-      setWaiterError('Ingresa tu código de mesero (101 - 118).');
+      setWaiterError('Ingresa tu clave personal de mesero.');
       return;
     }
 
@@ -197,22 +214,22 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
     setWaiterError('');
 
     try {
-      let waiterDisplayName = `Mesero #${cleanCode}`;
+      let waiterDisplayName = 'Mesero Autorizado';
 
       if (supabase) {
         const { data: waiterData, error: waiterErr } = await supabase
           .from('waiters')
-          .select('name, code')
+          .select('name')
           .eq('code', cleanCode)
           .eq('active', true)
           .single();
 
         if (waiterErr || !waiterData) {
-          setWaiterError(`El código "${cleanCode}" no es válido.`);
+          setWaiterError('Clave de mesero no válida o inactiva.');
           setIsSubmitting(false);
           return;
         }
-        waiterDisplayName = `${waiterData.name} (#${waiterData.code})`;
+        waiterDisplayName = String(waiterData.name);
       }
 
       const existingOrder = getActiveOrderForSpot(selectedSpotLabel);
@@ -221,12 +238,14 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
         0
       );
 
+      let finalOrderId = existingOrder?.id || '';
+
       if (existingOrder) {
         const mergedItems = [...existingOrder.items, ...draftItems];
         const newTotal = Number(existingOrder.total || 0) + addedSubtotal;
 
         if (supabase) {
-          await supabase
+          const { error: updErr } = await supabase
             .from('orders')
             .update({
               items: mergedItems,
@@ -235,12 +254,21 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
               status: 'PENDIENTE',
             })
             .eq('id', existingOrder.id);
+
+          if (updErr) {
+            alert(`Error al actualizar pedido: ${updErr.message}`);
+            setIsSubmitting(false);
+            return;
+          }
         }
       } else {
-        const newOrderId = `CP-${Math.floor(1000 + Math.random() * 9000)}`;
+        const generatedCode = `CP-${Math.floor(1000 + Math.random() * 9000)}`;
+        finalOrderId = generatedCode;
+
         const newOrderPayload = {
-          id: newOrderId,
-          customer_name: customerNameInput.trim() || `Cliente ${selectedSpotLabel}`,
+          id: generatedCode,
+          customer_name:
+            customerNameInput.trim() || `Cliente ${selectedSpotLabel}`,
           order_type: 'MESA',
           table_or_address: selectedSpotLabel,
           items: draftItems,
@@ -253,7 +281,20 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
         };
 
         if (supabase) {
-          await supabase.from('orders').insert([newOrderPayload]);
+          const { data: insertedRow, error: insErr } = await supabase
+            .from('orders')
+            .insert([newOrderPayload])
+            .select()
+            .single();
+
+          if (insErr) {
+            alert(`No se pudo enviar la comanda: ${insErr.message}`);
+            setIsSubmitting(false);
+            return;
+          }
+          if (insertedRow && insertedRow.id) {
+            finalOrderId = String(insertedRow.id);
+          }
 
           const spotObj = spots.find(
             (s) =>
@@ -275,20 +316,33 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
         }
       }
 
+      setLastComanda({
+        orderId: finalOrderId,
+        spotLabel: selectedSpotLabel,
+        waiterName: waiterDisplayName,
+        items: [...draftItems],
+        total: addedSubtotal,
+        createdAt: new Date().toLocaleTimeString('es-CO', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        isAddition: Boolean(existingOrder),
+      });
+
       setDraftItems([]);
       setCustomerNameInput('');
+      setWaiterCodeInput('');
       await loadSpotsAndOrders();
     } finally {
       setIsSubmitting(false);
     }
   };
-
   const handleReleaseTableAdmin = async (spotLabel: string) => {
     const pin = prompt(
-      '🔒 Solo Administrador puede liberar la mesa tras cobrar. Ingresa PIN Admin:'
+      '🔒 Acceso restringido a Cajera / Administrador. Ingresa clave de autorización:'
     );
-    if (pin !== '1989') {
-      alert('PIN incorrecto. Los meseros no pueden liberar ni borrar mesas atendidas.');
+    if (pin !== '1989' && pin !== '2026') {
+      alert('Clave incorrecta. Los meseros no pueden liberar ni eliminar mesas atendidas.');
       return;
     }
 
@@ -328,7 +382,6 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
     }).format(amount);
 
   const tables = spots.filter((s) => s.spot_type === 'MESA');
-  const barChairs = spots.filter((s) => s.spot_type === 'BARRA');
   const currentFloorTables = tables.filter(
     (t) => getTableFloor(t.spot_number) === activeFloor
   );
@@ -344,10 +397,14 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
       .includes(searchQuery.toLowerCase());
     return matchesCat && matchesSearch;
   });
+
+  const floorShortTag =
+    activeFloor === 'PISO_1' ? 'P1' : activeFloor === 'PISO_2' ? 'P2' : 'P3';
+
   if (loading) {
     return (
       <div className="rounded-3xl border border-gray-200 bg-white p-10 text-center text-sm font-bold text-gray-400">
-        Cargando mapa de 3 pisos, mesas y barra...
+        Cargando mapa de 3 pisos, mesas y barras...
       </div>
     );
   }
@@ -358,11 +415,10 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
         <div>
           <h2 className="flex items-center gap-2 text-base font-extrabold text-gray-900">
             <Layers className="h-5 w-5 text-amber-500" />
-            <span>Salones por Pisos y Zona de Barra</span>
+            <span>Salones por Pisos y Barras (3 Pisos)</span>
           </h2>
           <p className="text-xs text-gray-500">
-            Toca cualquier mesa o silla para ver todo el catálogo, tomar pedido
-            o agregar adicionales
+            Cada piso cuenta con sus 12 mesas y 7 sillas de barra independientes
           </p>
         </div>
 
@@ -376,7 +432,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            1er Piso + Barra (M1-12)
+            1er Piso (M1-12 + Barra)
           </button>
           <button
             type="button"
@@ -387,7 +443,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            2do Piso (M13-24)
+            2do Piso (M13-24 + Barra)
           </button>
           <button
             type="button"
@@ -398,77 +454,85 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            3er Piso VIP (M25-36)
+            3er Piso VIP (M25-36 + Barra)
           </button>
         </div>
       </div>
 
-      {activeFloor === 'PISO_1' && (
-        <section className="rounded-3xl border border-sky-200/80 bg-sky-50/40 p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Armchair className="h-5 w-5 text-sky-700" />
-              <h3 className="text-sm font-extrabold uppercase tracking-wider text-sky-900">
-                Zona de Barra • 1er Piso (7 Sillas)
-              </h3>
-            </div>
-            <span className="text-xs font-bold text-sky-700">
-              Toca una silla para ver menú o cuenta activa
-            </span>
+      {/* Zona de Barra: 7 Sillas en TODOS los 3 pisos */}
+      <section className="rounded-3xl border border-sky-200/80 bg-sky-50/40 p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Armchair className="h-5 w-5 text-sky-700" />
+            <h3 className="text-sm font-extrabold uppercase tracking-wider text-sky-900">
+              Zona de Barra •{' '}
+              {activeFloor === 'PISO_1'
+                ? 'Primer Piso'
+                : activeFloor === 'PISO_2'
+                ? 'Segundo Piso'
+                : 'Tercer Piso VIP'}{' '}
+              (7 Sillas)
+            </h3>
           </div>
+          <span className="text-xs font-bold text-sky-700">
+            Toca una silla para ver menú, pedir o añadir
+          </span>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-7">
-            {barChairs.map((chair) => {
-              const label = `Barra ${chair.spot_number}`;
-              const activeOrder = getActiveOrderForSpot(label);
-              const isLocked =
-                Boolean(activeOrder) || chair.status === 'OCUPADA';
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-7">
+          {BAR_CHAIRS_NUMBERS.map((num) => {
+            const label =
+              activeFloor === 'PISO_1'
+                ? `Barra ${num}`
+                : `Barra ${floorShortTag}-${num}`;
+            const activeOrder = getActiveOrderForSpot(label);
+            const isLocked = Boolean(activeOrder);
 
-              return (
-                <button
-                  key={chair.id}
-                  type="button"
-                  onClick={() => openSpotDrawer(label)}
-                  className={`flex flex-col items-center rounded-2xl border-2 p-3.5 text-center shadow-2xs transition-all hover:-translate-y-0.5 active:scale-95 ${
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => openSpotDrawer(label)}
+                className={`flex flex-col items-center rounded-2xl border-2 p-3.5 text-center shadow-2xs transition-all hover:-translate-y-0.5 active:scale-95 ${
+                  isLocked
+                    ? 'border-red-300 bg-red-50/90 text-red-950'
+                    : 'border-emerald-200 bg-white text-gray-900 hover:border-emerald-400'
+                }`}
+              >
+                <div
+                  className={`mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl ${
                     isLocked
-                      ? 'border-red-300 bg-red-50/90 text-red-950'
-                      : 'border-emerald-200 bg-white text-gray-900 hover:border-emerald-400'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-sky-100 text-sky-800'
                   }`}
                 >
-                  <div
-                    className={`mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl ${
-                      isLocked
-                        ? 'bg-red-600 text-white'
-                        : 'bg-sky-100 text-sky-800'
-                    }`}
-                  >
-                    {isLocked ? (
-                      <Lock className="h-4 w-4" />
-                    ) : (
-                      <Armchair className="h-5 w-5" />
-                    )}
-                  </div>
-                  <span className="text-sm font-extrabold">{label}</span>
-                  <span
-                    className={`mt-1.5 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
-                      isLocked
-                        ? 'bg-red-600 text-white'
-                        : 'bg-emerald-100 text-emerald-800'
-                    }`}
-                  >
-                    {isLocked ? 'Atendida' : 'Disponible'}
-                  </span>
-                  {activeOrder && (
-                    <span className="mt-1 text-[11px] font-extrabold text-red-700">
-                      {formatPrice(activeOrder.total)}
-                    </span>
+                  {isLocked ? (
+                    <Lock className="h-4 w-4" />
+                  ) : (
+                    <Armchair className="h-5 w-5" />
                   )}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
+                </div>
+                <span className="text-xs font-extrabold">{label}</span>
+                <span
+                  className={`mt-1.5 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
+                    isLocked
+                      ? 'bg-red-600 text-white'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {isLocked ? 'Atendida' : 'Disponible'}
+                </span>
+                {activeOrder && (
+                  <span className="mt-1 text-[11px] font-extrabold text-red-700">
+                    {formatPrice(activeOrder.total)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+      {/* Zona de Mesas: 12 Mesas por Piso */}
       <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-2xs">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-extrabold uppercase tracking-wider text-gray-800">
@@ -589,7 +653,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                     type="button"
                     onClick={() => handleReleaseTableAdmin(selectedSpotLabel)}
                     className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700 hover:bg-red-600 hover:text-white"
-                    title="Solo Administrador (PIN 1989)"
+                    title="Solo Cajera o Administrador"
                   >
                     Liberar / Cobrar Mesa
                   </button>
@@ -694,6 +758,74 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
               </div>
               <div className="flex flex-col justify-between overflow-y-auto bg-white p-5 lg:col-span-5">
                 <div className="space-y-4">
+                  {lastComanda && (
+                    <div className="rounded-2xl border-2 border-emerald-400 bg-emerald-50/70 p-4 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+                        <div>
+                          <span className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                            {lastComanda.isAddition
+                              ? 'ADICIONAL ENVIADO'
+                              : 'COMANDA ENVIADA'}
+                          </span>
+                          <h4 className="mt-1 text-sm font-extrabold text-gray-900">
+                            {lastComanda.spotLabel} • #{lastComanda.orderId}
+                          </h4>
+                          <p className="text-[11px] font-semibold text-gray-600">
+                            Mesero: {lastComanda.waiterName} •{' '}
+                            {lastComanda.createdAt}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => window.print()}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-xs font-extrabold text-[#FACC15] shadow-xs hover:bg-gray-800"
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          <span>Imprimir</span>
+                        </button>
+                      </div>
+
+                      {lastComanda.items.filter((i) => i.station === 'COCINA')
+                        .length > 0 && (
+                        <div className="mt-2.5 rounded-xl border border-amber-200 bg-white p-2.5 text-xs">
+                          <p className="mb-1 flex items-center gap-1 font-extrabold text-amber-800">
+                            <ChefHat className="h-3.5 w-3.5" />
+                            <span>COMANDA COCINA</span>
+                          </p>
+                          <ul className="space-y-1">
+                            {lastComanda.items
+                              .filter((i) => i.station === 'COCINA')
+                              .map((it, k) => (
+                                <li key={k} className="font-bold text-gray-900">
+                                  {it.quantity}x {it.name}
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {lastComanda.items.filter((i) => i.station === 'BARRA')
+                        .length > 0 && (
+                        <div className="mt-2 rounded-xl border border-sky-200 bg-white p-2.5 text-xs">
+                          <p className="mb-1 flex items-center gap-1 font-extrabold text-sky-800">
+                            <Wine className="h-3.5 w-3.5" />
+                            <span>COMANDA BARRA</span>
+                          </p>
+                          <ul className="space-y-1">
+                            {lastComanda.items
+                              .filter((i) => i.station === 'BARRA')
+                              .map((it, k) => (
+                                <li key={k} className="font-bold text-gray-900">
+                                  {it.quantity}x {it.name}
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {selectedSpotOrder && (
                     <div className="rounded-2xl border border-red-200 bg-red-50/60 p-4">
                       <div className="mb-2 flex items-center justify-between">
@@ -735,7 +867,6 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                       </div>
                     </div>
                   )}
-
                   <div>
                     <h4 className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-gray-800">
                       <ShoppingBag className="h-4 w-4 text-amber-500" />
@@ -789,10 +920,10 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                       <input
                         type="password"
                         inputMode="numeric"
-                        maxLength={4}
+                        maxLength={6}
                         value={waiterCodeInput}
                         onChange={(e) => setWaiterCodeInput(e.target.value)}
-                        placeholder="Código Mesero (101-118)"
+                        placeholder="Clave privada mesero"
                         className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-extrabold text-gray-900"
                       />
                       <input
@@ -836,10 +967,10 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                       <Send className="h-4 w-4" />
                       <span>
                         {isSubmitting
-                          ? 'Enviando a Cocina...'
+                          ? 'Enviando Comanda...'
                           : selectedSpotOrder
-                          ? 'Agregar Adicionales y Enviar a Cocina'
-                          : 'Confirmar Pedido y Bloquear Mesa'}
+                          ? 'Agregar Adicionales y Generar Comanda'
+                          : 'Confirmar Pedido y Generar Comanda'}
                       </span>
                     </button>
                   </div>

@@ -254,9 +254,7 @@ export default function AsistenciaPage() {
                     <span className="font-extrabold text-gray-900">
                       {log.staff_name}
                     </span>
-                    <span className="ml-2 text-xs font-semibold text-gray-400">
-                      #{log.staff_code}
-                    </span>
+                   
                   </div>
 
                   <div className="flex items-center gap-3">

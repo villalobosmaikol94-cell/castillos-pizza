@@ -3,6 +3,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { MENU_CATEGORIES, MENU_PRODUCTS } from '@/data/menuData';
 import { getStoredMenu } from '@/lib/menuStorage';
+import { supabase } from '@/lib/supabase';
+
 import { CartItem, MenuCategory, Product } from '@/types/restaurant';
 import Navbar from '@/components/Navbar';
 import CategoryBar from '@/components/CategoryBar';
@@ -17,22 +19,52 @@ export default function HomePage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
-  useEffect(() => {
+   useEffect(() => {
     const stored = getStoredMenu();
     if (stored && stored.length > 0) {
       setProducts(stored);
     }
+
+    const fetchCloudMenu = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('*');
+
+      if (!error && data && data.length > 0) {
+        const mapped: Product[] = data.map((row: Record<string, unknown>) => ({
+          id: String(row.id),
+          name: String(row.name),
+          description: String(row.description || ''),
+          price: Number(row.price ?? row.base_price ?? 0),
+          category: row.category as MenuCategory,
+          station: (row.station as 'COCINA' | 'BARRA') || 'COCINA',
+          popular: Boolean(row.popular),
+          available: row.available !== false,
+          imageUrl: row.image_url ? String(row.image_url) : undefined,
+          optionsTitle: row.options_title
+            ? String(row.options_title)
+            : undefined,
+          options: (row.options as Product['options']) || undefined,
+        }));
+        setProducts(mapped);
+      }
+    };
+
+    fetchCloudMenu();
 
     const handleUpdate = () => {
       const updated = getStoredMenu();
       if (updated && updated.length > 0) {
         setProducts(updated);
       }
+      fetchCloudMenu();
     };
 
     window.addEventListener('castillos_menu_updated', handleUpdate);
     return () => window.removeEventListener('castillos_menu_updated', handleUpdate);
   }, []);
+
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {

@@ -146,7 +146,7 @@ export default function CartDrawer({
     const phoneNumber = RESTAURANT_WHATSAPP;
     const encodedMessage = encodeURIComponent(text);
 
-    const urlWeb = `https://wa.me{phoneNumber}?text=${encodedMessage}`;
+   const urlWeb = `https://whatsapp.com{phoneNumber}&text=${encodedMessage}`;
     const urlApp = `whatsapp://send?phone=${phoneNumber}&text=${encodedMessage}`;
     const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 

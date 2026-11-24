@@ -836,7 +836,7 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                                   <div style="text-align:center;">
                                     <div style="font-size:16px;font-weight:bold;">CASTILLO'S PIZZA</div>
                                     <div style="font-size:11px;">NIT: 1099365552-1</div>
-                                    <div style="font-size:11px;">Lebrija, santander, Santander</div>
+                                    <div style="font-size:11px;">Lebrija, Santander</div>
                                     <div style="margin-top:6px;font-size:14px;font-weight:bold;border:1px solid #000;padding:3px;">
                                       ${lastComanda.isAddition ? 'ADICIONAL' : 'COMANDA'} • ${lastComanda.spotLabel}
                                     </div>

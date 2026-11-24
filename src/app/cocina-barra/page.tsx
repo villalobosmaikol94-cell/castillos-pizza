@@ -285,7 +285,7 @@ export default function CocinaBarraPage() {
       <div style="page-break-after: always; padding-bottom: 18px; border-bottom: 3px double #000; margin-bottom: 18px;">
         <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px;">
           <div style="font-size: 21px; font-weight: bold;">CASTILLO'S PIZZA</div>
-         <div style="font-size: 12px; font-weight: bold;">NIT: 1099365552-1 | Lebrija, Santander</div>
+         <div style="font-size: 12px; font-weight: bold;">NIT: 1099365552-1 | Lebrija</div>
           <div style="font-size: 13px; font-weight: bold; border: 2px solid #000; padding: 4px; margin: 6px 0;">
             ${docTitle}
           </div>

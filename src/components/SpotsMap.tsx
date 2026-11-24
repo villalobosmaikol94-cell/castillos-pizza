@@ -776,14 +776,88 @@ export default function SpotsMap({ onSelectSpotForOrder }: SpotsMapProps) {
                           </p>
                         </div>
 
-                        <button
+                                                <button
                           type="button"
-                          onClick={() => window.print()}
+                          onClick={() => {
+                            const cocinaItems = lastComanda.items.filter(
+                              (i) => i.station === 'COCINA'
+                            );
+                            const barraItems = lastComanda.items.filter(
+                              (i) => i.station === 'BARRA'
+                            );
+                            const buildTicketSection = (
+                              title: string,
+                              list: typeof lastComanda.items
+                            ) =>
+                              list.length === 0
+                                ? ''
+                                : `<div style="border-top:1px dashed #000;margin-top:8px;padding-top:6px;">
+                                    <div style="font-weight:bold;font-size:13px;margin-bottom:4px;">*** ${title} ***</div>
+                                    ${list
+                                      .map(
+                                        (it) =>
+                                          `<div style="font-size:13px;font-weight:bold;margin:3px 0;">${it.quantity}x ${it.name}</div>`
+                                      )
+                                      .join('')}
+                                  </div>`;
+
+                            const win = window.open(
+                              '',
+                              '_blank',
+                              'width=320,height=600'
+                            );
+                            if (!win) return;
+                            win.document.write(`
+                              <html>
+                                <head>
+                                  <title>Comanda ${lastComanda.spotLabel}</title>
+                                  <style>
+                                    @page { margin: 0; }
+                                    body {
+                                      font-family: 'Courier New', monospace;
+                                      width: 72mm;
+                                      margin: 0 auto;
+                                      padding: 8px;
+                                      color: #000;
+                                    }
+                                  </style>
+                                </head>
+                                <body>
+                                  <div style="text-align:center;">
+                                    <div style="font-size:16px;font-weight:bold;">CASTILLO'S PIZZA</div>
+                                    <div style="font-size:11px;">NIT: 1099365552-1</div>
+                                    <div style="font-size:11px;">Bucaramanga, Santander</div>
+                                    <div style="margin-top:6px;font-size:14px;font-weight:bold;border:1px solid #000;padding:3px;">
+                                      ${lastComanda.isAddition ? 'ADICIONAL' : 'COMANDA'} • ${lastComanda.spotLabel}
+                                    </div>
+                                  </div>
+                                  <div style="font-size:11px;margin-top:8px;">
+                                    <div>Orden: <strong>#${lastComanda.orderId}</strong></div>
+                                    <div>Mesero: <strong>${lastComanda.waiterName}</strong></div>
+                                    <div>Hora: ${lastComanda.createdAt}</div>
+                                  </div>
+                                  ${buildTicketSection('COMANDA COCINA', cocinaItems)}
+                                  ${buildTicketSection('COMANDA BARRA', barraItems)}
+                                  <div style="border-top:1px dashed #000;margin-top:12px;padding-top:6px;text-align:center;font-size:11px;">
+                                    --- FIN DE COMANDA ---
+                                  </div>
+                                  <script>
+                                    window.onload = function() {
+                                      window.print();
+                                      setTimeout(function() { window.close(); }, 400);
+                                    };
+                                  </script>
+                                </body>
+                              </html>
+                            `);
+                            win.document.close();
+                          }}
                           className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-2 text-xs font-extrabold text-[#FACC15] shadow-xs hover:bg-gray-800"
                         >
                           <Printer className="h-3.5 w-3.5" />
-                          <span>Imprimir</span>
+                          <span>Imprimir Ticket</span>
                         </button>
+
                       </div>
 
                       {lastComanda.items.filter((i) => i.station === 'COCINA')

@@ -285,7 +285,7 @@ export default function CocinaBarraPage() {
       <div style="page-break-after: always; padding-bottom: 18px; border-bottom: 3px double #000; margin-bottom: 18px;">
         <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px;">
           <div style="font-size: 21px; font-weight: bold;">CASTILLO'S PIZZA</div>
-          <div style="font-size: 12px; font-weight: bold;">NIT: 900.000.000-1 | Bucaramanga, Santander</div>
+         <div style="font-size: 12px; font-weight: bold;">NIT: 1099365552-1 | Lebrija, Santander</div>
           <div style="font-size: 13px; font-weight: bold; border: 2px solid #000; padding: 4px; margin: 6px 0;">
             ${docTitle}
           </div>
@@ -406,9 +406,8 @@ export default function CocinaBarraPage() {
             Puesto de Caja y Comandas
           </h1>
           <p className="mt-1 text-xs text-gray-500">
-            Ingresa la clave de <strong>Cajera (2026)</strong> o tu código de{' '}
-            <strong>Mesero (101 - 118)</strong>
-          </p>
+  Ingresa tu <strong>clave personal autorizada</strong> para continuar
+</p>
 
           <form onSubmit={handleStaffLogin} className="mt-6 space-y-4">
             <input
@@ -518,7 +517,8 @@ export default function CocinaBarraPage() {
                 <span>
                   {role === 'ADMIN'
                     ? 'Cajera / Punto de Venta'
-                    : `Mesero: ${currentWaiter?.name} (#${currentWaiter?.code})`}
+                   : `Mesero: ${currentWaiter?.name}`}
+
                 </span>
               </span>
             </div>

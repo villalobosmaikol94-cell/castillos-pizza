@@ -30,6 +30,9 @@ import {
   X,
   Search,
   RotateCcw,
+  Camera,
+Upload,
+
 } from 'lucide-react';
 
 const MASTER_ADMIN_PIN = '1989';
@@ -63,6 +66,31 @@ export default function AdminSecretPage() {
   const [editPrice, setEditPrice] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editAvailable, setEditAvailable] = useState(true);
+  const [newImageUrl, setNewImageUrl] = useState('');
+const [editImageUrl, setEditImageUrl] = useState('');
+const [uploadingDishPhoto, setUploadingDishPhoto] = useState(false);
+
+const uploadProductPhoto = async (file: File): Promise<string | null> => {
+  if (!supabase) return null;
+  setUploadingDishPhoto(true);
+  try {
+    const ext = file.name.split('.').pop() || 'jpg';
+    const fileName = `dish-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('menu-photos')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+    if (upErr) {
+      alert(`Error subiendo foto: ${upErr.message}`);
+      return null;
+    }
+    const { data } = supabase.storage.from('menu-photos').getPublicUrl(fileName);
+    return data.publicUrl;
+  } finally {
+    setUploadingDishPhoto(false);
+  }
+};
+
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
     if (pinInput.trim() === MASTER_ADMIN_PIN) {
@@ -158,6 +186,8 @@ export default function AdminSecretPage() {
     setEditPrice(String(item.price));
     setEditDesc(item.description);
     setEditAvailable(item.available !== false);
+    setEditImageUrl(item.imageUrl || '');
+
   };
 
   const saveEdit = async (id: string) => {
@@ -169,8 +199,11 @@ export default function AdminSecretPage() {
             price: Number(editPrice) || item.price,
             description: editDesc.trim(),
             available: editAvailable,
+            image_url: editImageUrl || null,
+            imageUrl: editImageUrl || undefined,
           }
         : item
+        
     );
 
     if (supabase) {
@@ -215,6 +248,8 @@ export default function AdminSecretPage() {
         popular: Boolean(row.popular),
         available: row.available !== false,
         options: row.options || undefined,
+        imageUrl: row.image_url ? String(row.image_url) : undefined,
+
       }));
       await syncMenuChanges(mapped);
     }
@@ -501,6 +536,29 @@ export default function AdminSecretPage() {
                   placeholder="Descripción breve e ingredientes (opcional)..."
                   className="rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs text-gray-800 focus:border-amber-400 focus:bg-white focus:outline-none sm:col-span-2 lg:col-span-5"
                 />
+                          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-amber-400 bg-amber-50/70 px-3.5 py-2 text-xs font-extrabold text-amber-950 hover:bg-amber-100">
+            <Camera className="h-4 w-4 text-amber-600" />
+            <span>
+              {uploadingDishPhoto
+                ? 'Subiendo foto...'
+                : newImageUrl
+                ? '✅ Foto lista'
+                : 'Subir Foto del Plato (Celular / PC)'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.item(0);
+                if (f) {
+                  const url = await uploadProductPhoto(f);
+                  if (url) setNewImageUrl(url);
+                }
+              }}
+            />
+          </label>
+
               </form>
             </div>
 
@@ -569,8 +627,32 @@ export default function AdminSecretPage() {
                             type="text"
                             value={editDesc}
                             onChange={(e) => setEditDesc(e.target.value)}
+                            
                             className="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs text-gray-800"
                           />
+                                    <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-extrabold text-amber-950 hover:bg-amber-100">
+            <Upload className="h-3.5 w-3.5 text-amber-600" />
+            <span>
+              {uploadingDishPhoto
+                ? 'Subiendo...'
+                : editImageUrl
+                ? 'Cambiar Foto'
+                : 'Subir Foto'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.item(0);
+                if (f) {
+                  const url = await uploadProductPhoto(f);
+                  if (url) setEditImageUrl(url);
+                }
+              }}
+            />
+          </label>
+
                           <div className="flex items-center justify-end gap-2">
                             <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-bold text-gray-700">
                               <input

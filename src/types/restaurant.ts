@@ -29,7 +29,8 @@ export interface Product {
   category: MenuCategory;
   station: PrintStation;
   popular?: boolean;
-  available?: boolean; // Control de disponibilidad (true = disponible, false = agotado)
+  available?: boolean;
+  imageUrl?: string;
   optionsTitle?: string;
   options?: ProductOption[];
 }
@@ -41,16 +42,6 @@ export interface CartItem extends Product {
   notes?: string;
 }
 
-export interface Order {
-  id: string;
-  customerName: string;
-  orderType: 'MESA' | 'DOMICILIO';
-  tableOrAddress: string;
-  items: CartItem[];
-  total: number;
-  createdAt: string;
-  status: 'PENDIENTE' | 'PREPARANDO' | 'LISTO';
-}
 export interface Order {
   id: string;
   customerName: string;
@@ -72,6 +63,7 @@ export interface RestaurantSpot {
   id: string;
   spot_type: 'MESA' | 'BARRA';
   spot_number: number;
+  floor?: 'PISO_1' | 'PISO_2' | 'PISO_3';
   status: 'DISPONIBLE' | 'OCUPADA' | 'RESERVADA';
 }
 
@@ -81,3 +73,4 @@ export interface WaiterProfile {
   name: string;
   active: boolean;
 }
+

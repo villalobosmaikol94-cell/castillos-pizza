@@ -22,7 +22,7 @@ import {
   Receipt,
 } from 'lucide-react';
 
-const CASHIER_PIN = '2026';
+const CASHIER_PIN = '2016';
 
 function announceNewOrder(
   orderId: string,
@@ -112,7 +112,7 @@ export default function CocinaBarraPage() {
     }
 
     setAuthError(
-      'Código inválido. Usa la clave de Cajera (2026) o código de Mesero (101-118).'
+      'Código inválido. Usa la clave de Cajera  o código de Mesero .'
     );
   };
     useEffect(() => {
